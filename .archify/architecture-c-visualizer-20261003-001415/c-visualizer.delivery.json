@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "36029298-347e-40ab-aad5-a677f5a77d07",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\Users\\padma\\Downloads\\Code visualiser\\.archify\\architecture-c-visualizer-20261003-001415\\candidate.json",
+  "output": "C:\\Users\\padma\\Downloads\\Code visualiser\\.archify\\architecture-c-visualizer-20261003-001415\\c-visualizer.html",
+  "specification": {
+    "sha256": "d0380d7a614ba2120783adf8efd80d493379a93f184f7c81e6a2d538f2441dae",
+    "bytes": 3285
+  },
+  "artifact": {
+    "sha256": "26e72f24c2e0504dd40e6d99596d0ae88f4de919939f665db16ed82bf39bb676",
+    "bytes": 761947
+  }
+}

@@ -5,7 +5,7 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, Decoration, type DecorationSet } from "@codemirror/view";
 import { StateEffect, StateField, type Extension, type Range } from "@codemirror/state";
 import { useEffect, useMemo, useRef } from "react";
-import { aiGhost, cCompletions, hitsGutter, lineClick, setHitCounts, type AiOptions } from "./editorExtras";
+import { aiGhost, aiPrompt, cCompletions, hitsGutter, liveDiagnostics, lineClick, setHitCounts, type AiOptions, type DiagOptions } from "./editorExtras";
 
 interface Marks {
   active: number | null;
@@ -64,6 +64,23 @@ const theme = EditorView.theme({
   ".cm-hits-gutter": { minWidth: "38px" },
   ".cm-hit": { display: "inline-block", padding: "0 5px", margin: "1px 2px", borderRadius: "4px", fontSize: "11px", color: "#a5f3fc" },
   ".cm-ghost": { color: "rgba(255,255,255,0.32)", fontStyle: "italic", whiteSpace: "pre" },
+  ".cm-lintRange-error": {
+    backgroundImage: "none",
+    background: "rgba(248,113,113,0.22)",
+    textDecoration: "underline wavy #f87171",
+    textDecorationThickness: "1.5px",
+    textUnderlineOffset: "3px",
+    borderRadius: "2px",
+  },
+  ".cm-lintRange-warning": {
+    backgroundImage: "none",
+    textDecoration: "underline wavy #fbbf24",
+    textDecorationThickness: "1.5px",
+    textUnderlineOffset: "3px",
+  },
+  ".cm-tooltip.cm-tooltip-lint": { backgroundColor: "#262830", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "4px" },
+  ".cm-diagnostic": { fontSize: "13px", padding: "6px 8px" },
+  ".cm-diagnosticAction": { background: "#23262f", border: "1px solid rgba(255,255,255,0.18)", borderRadius: "4px", color: "#a5f3fc", padding: "2px 8px", margin: "4px 4px 0 0", cursor: "pointer" },
   ".cm-error-line": {
     background: "linear-gradient(90deg, rgba(248,113,113,0.3), rgba(248,113,113,0.05) 70%, transparent)",
     boxShadow: "inset 3px 0 0 #f87171",
@@ -80,6 +97,7 @@ export default function CodeEditor({
   hits = null,
   onLineClick,
   ai,
+  diag,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -95,19 +113,25 @@ export default function CodeEditor({
   onLineClick?: (line: number) => void;
   /** AI ghost-text autocomplete (omit to disable) */
   ai?: AiOptions;
+  /** live error underlines are always on; this adds the AI "fix this line" action */
+  diag?: DiagOptions;
 }) {
   const view = useRef<EditorView | null>(null);
   // refs keep the extension list stable so the editor is not reconfigured on every render
   const clickRef = useRef(onLineClick);
   const aiRef = useRef(ai);
+  const diagRef = useRef(diag);
   useEffect(() => {
     clickRef.current = onLineClick;
     aiRef.current = ai;
+    diagRef.current = diag;
   });
   const extensions: Extension[] = useMemo(
     () => [
       cpp(),
       cCompletions,
+      // eslint-disable-next-line react-hooks/refs -- refs are only read later, inside event callbacks
+      liveDiagnostics(() => diagRef.current),
       hitsGutter,
       // eslint-disable-next-line react-hooks/refs -- refs are only read later, inside event callbacks
       lineClick((l) => clickRef.current?.(l)),
@@ -116,8 +140,11 @@ export default function CodeEditor({
         enabled: () => !!aiRef.current?.enabled(),
         fetchCompletion: (p, s, sig) => aiRef.current!.fetchCompletion(p, s, sig),
         onStatus: (st) => aiRef.current?.onStatus?.(st),
+        onError: (e) => aiRef.current?.onError?.(e),
         delayMs: ai?.delayMs,
       }),
+      // eslint-disable-next-line react-hooks/refs -- refs are only read later, inside event callbacks
+      aiPrompt(() => aiRef.current),
       marksField,
       theme,
       EditorView.updateListener.of((u) => {

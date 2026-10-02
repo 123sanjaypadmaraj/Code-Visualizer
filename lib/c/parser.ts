@@ -133,11 +133,18 @@ class Parser {
     const prev = this.toks[Math.max(this.p - 1, 0)];
     const found = t.k === "eof" ? "end of file" : `'${t.s}'`;
     // a missing ';' or ')' is almost always noticed on the previous line
-    const line = (s === ";" || s === ")") && prev ? prev.line : t.line;
-    throw new CError(`Expected '${s}' but found ${found}`, line);
+    const behind = (s === ";" || s === ")") && prev;
+    const line = behind ? prev.line : t.line;
+    // where to point: just after the previous token for a missing ';' / ')', else at the unexpected token
+    const range =
+      behind && prev.end !== undefined
+        ? { from: Math.max(prev.end - 1, prev.off ?? 0), to: prev.end, fixAt: prev.end, insert: s }
+        : { from: t.off, to: t.end, fixAt: s === ";" || s === ")" || s === "]" || s === "}" ? t.off : undefined, insert: s === ";" || s === ")" || s === "]" || s === "}" ? s : undefined };
+    throw new CError(`Expected '${s}' but found ${found}`, line, range);
   }
   fail(msg: string, line = this.peek().line): never {
-    throw new CError(msg, line);
+    const t = this.peek();
+    throw new CError(msg, line, { from: t.off, to: t.end });
   }
 
   isTypeStart(o = 0): boolean {

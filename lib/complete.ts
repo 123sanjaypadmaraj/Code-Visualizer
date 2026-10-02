@@ -1,4 +1,4 @@
-/** AI code completion (inline "ghost text"). Separate from the trace-analysis calls in llm.ts. */
+/** Small, fast LLM calls (inline autocomplete, one-line fixes). Separate from the trace-analysis calls in llm.ts. */
 
 const GROQ_COMPLETE_MODEL = process.env.GROQ_COMPLETE_MODEL || "llama-3.1-8b-instant";
 const GEMINI_COMPLETE_MODEL = process.env.GEMINI_COMPLETE_MODEL || "gemini-2.5-flash";
@@ -37,66 +37,92 @@ export function cleanCompletion(raw: string, prefix = "", suffix = ""): string {
   return t;
 }
 
-async function callGroq(prefix: string, suffix: string, signal: AbortSignal): Promise<string> {
-  const key = process.env.GROQ_API_KEY;
-  if (!key) throw new Error("GROQ_API_KEY is not set");
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    signal,
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify({
-      model: GROQ_COMPLETE_MODEL,
-      temperature: 0.1,
-      max_tokens: 200,
-      messages: [
-        { role: "system", content: COMPLETE_SYSTEM },
-        { role: "user", content: buildCompletePrompt(prefix, suffix) },
-      ],
-    }),
-  });
-  if (!res.ok) throw new Error(`Groq ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content ?? "";
-}
-
-async function callGemini(prefix: string, suffix: string, signal: AbortSignal): Promise<string> {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("GEMINI_API_KEY is not set");
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_COMPLETE_MODEL}:generateContent`, {
-    method: "POST",
-    signal,
-    headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: COMPLETE_SYSTEM }] },
-      contents: [{ role: "user", parts: [{ text: buildCompletePrompt(prefix, suffix) }] }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 200, thinkingConfig: { thinkingBudget: 0 } },
-    }),
-  });
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
-}
-
 export function completeTimeoutMs(): number {
   const n = Number(process.env.COMPLETE_TIMEOUT_MS);
   return Number.isFinite(n) && n > 0 ? n : 8000;
 }
 
-/** Try Groq first (fast), then Gemini. Throws only if every configured provider failed. */
-export async function completeCode(prefix: string, suffix: string, signal?: AbortSignal): Promise<string> {
+type Call = (system: string, user: string, maxTokens: number, signal: AbortSignal) => Promise<string>;
+
+/** Providers that speak the OpenAI chat-completions format (all have a free tier). */
+function openAICompat(url: string, keyEnv: string, model: string, label: string, extraHeaders: Record<string, string> = {}): Call | null {
+  const key = process.env[keyEnv];
+  if (!key) return null;
+  return async (system, user, maxTokens, signal) => {
+    const res = await fetch(url, {
+      method: "POST",
+      signal,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}`, ...extraHeaders },
+      body: JSON.stringify({
+        model,
+        temperature: 0.1,
+        max_tokens: maxTokens,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error(`${label} ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content ?? "";
+  };
+}
+
+const callGemini: Call = async (system, user, maxTokens, signal) => {
+  const key = process.env.GEMINI_API_KEY!;
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_COMPLETE_MODEL}:generateContent`, {
+    method: "POST",
+    signal,
+    headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts: [{ text: user }] }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: maxTokens, thinkingConfig: { thinkingBudget: 0 } },
+    }),
+  });
+  if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
+};
+
+/** Configured providers, fastest first. Each is skipped when its API key is not set. */
+function providers(): [string, Call][] {
+  const list: [string, Call | null][] = [
+    ["Groq", openAICompat("https://api.groq.com/openai/v1/chat/completions", "GROQ_API_KEY", GROQ_COMPLETE_MODEL, "Groq")],
+    ["Cerebras", openAICompat("https://api.cerebras.ai/v1/chat/completions", "CEREBRAS_API_KEY", process.env.CEREBRAS_MODEL || "llama3.1-8b", "Cerebras")],
+    ["Gemini", process.env.GEMINI_API_KEY ? callGemini : null],
+    [
+      "OpenRouter",
+      openAICompat("https://openrouter.ai/api/v1/chat/completions", "OPENROUTER_API_KEY", process.env.OPENROUTER_MODEL || "meta-llama/llama-3.3-70b-instruct:free", "OpenRouter"),
+    ],
+  ];
+  return list.filter((e): e is [string, Call] => e[1] !== null);
+}
+
+/** Ask a fast model, trying each configured provider in turn. Throws only if every one of them failed. */
+export async function askLLM(
+  system: string,
+  user: string,
+  opts: { maxTokens?: number; signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<string> {
+  const list = providers();
+  if (!list.length) throw new Error("No AI provider API key is set (see .env.example)");
   const errors: string[] = [];
-  for (const [label, call] of [
-    ["Groq", callGroq],
-    ["Gemini", callGemini],
-  ] as const) {
-    const timeout = AbortSignal.timeout(completeTimeoutMs());
-    const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  for (const [label, call] of list) {
+    const timeout = AbortSignal.timeout(opts.timeoutMs ?? completeTimeoutMs());
+    const combined = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
     try {
-      return cleanCompletion(await call(prefix, suffix, combined), prefix, suffix);
+      return await call(system, user, opts.maxTokens ?? 200, combined);
     } catch (e) {
-      if (signal?.aborted) throw e;
+      if (opts.signal?.aborted) throw e;
       errors.push(timeout.aborted ? `${label} timed out` : e instanceof Error ? e.message : String(e));
     }
   }
   throw new Error(errors.join(" | "));
+}
+
+export async function completeCode(prefix: string, suffix: string, signal?: AbortSignal): Promise<string> {
+  const raw = await askLLM(COMPLETE_SYSTEM, buildCompletePrompt(prefix, suffix), { maxTokens: 200, signal });
+  return cleanCompletion(raw, prefix, suffix);
 }

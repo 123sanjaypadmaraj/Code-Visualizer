@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "C Visualizer Architecture",
+    "output": ".archify/architecture-c-visualizer-20261003-001415/c-visualizer.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "student", "type": "external", "label": "Student", "sublabel": "writes C code", "pos": [40, 200], "size": [120, 60] },
+    { "id": "editor", "type": "frontend", "label": "Code Editor", "sublabel": "CodeMirror + ghost text", "pos": [250, 200], "size": [140, 60] },
+    { "id": "diagnostics", "type": "frontend", "label": "Live Diagnostics", "sublabel": "lexer + parser checks", "pos": [250, 70], "size": [140, 60] },
+    { "id": "page", "type": "frontend", "label": "Page State", "sublabel": "app/page.tsx", "pos": [480, 200], "size": [140, 60] },
+    { "id": "interp", "type": "backend", "label": "C Interpreter", "sublabel": "lexer → parser → interp", "pos": [710, 200], "size": [150, 60] },
+    { "id": "views", "type": "frontend", "label": "Visual Panels", "sublabel": "Memory · Console · Study", "pos": [970, 200], "size": [170, 60] },
+    { "id": "routes", "type": "backend", "label": "AI API Routes", "sublabel": "/api/complete · /api/fix", "pos": [470, 360], "size": [160, 64] },
+    { "id": "ratelimit", "type": "security", "label": "Rate Limiter", "sublabel": "in-memory, per IP", "pos": [730, 360], "size": [150, 60] },
+    { "id": "llm", "type": "cloud", "label": "LLM Providers", "sublabel": "free-tier chat APIs", "pos": [470, 520], "size": [160, 60], "tag": "API keys server-side" }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Browser (client-side)", "wraps": ["editor", "diagnostics", "page", "interp", "views"] },
+    { "kind": "region", "label": "Next.js server", "wraps": ["routes", "ratelimit"] }
+  ],
+  "connections": [
+    { "id": "student-types", "from": "student", "to": "editor", "label": "types", "variant": "emphasis" },
+    { "id": "editor-lint", "from": "editor", "to": "diagnostics", "label": "live lint", "fromSide": "top", "toSide": "bottom" },
+    { "id": "editor-page", "from": "editor", "to": "page", "label": "edits", "variant": "emphasis" },
+    { "id": "page-run", "from": "page", "to": "interp", "label": "runC", "variant": "emphasis" },
+    { "id": "interp-trace", "from": "interp", "to": "views", "label": "trace steps", "variant": "emphasis" },
+    { "id": "page-ai", "from": "page", "to": "routes", "label": "complete / fix", "variant": "dashed", "fromSide": "bottom", "toSide": "top" },
+    { "id": "routes-limit", "from": "routes", "to": "ratelimit", "label": "per-IP limit", "variant": "security" },
+    { "id": "routes-llm", "from": "routes", "to": "llm", "label": "fallback chain", "variant": "dashed", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Runs in the browser", "items": ["Programs are traced by a real in-browser C interpreter", "Memory, console and study panels render the trace"] },
+    { "dot": "emerald", "title": "AI is optional", "items": ["Ghost-text autocomplete and one-line fixes call server routes", "Providers are tried in order until one answers"] },
+    { "dot": "rose", "title": "Not on this path", "items": ["/api/analyze + lib/llm.ts (LLM trace) is not called by the UI"] }
+  ]
+}

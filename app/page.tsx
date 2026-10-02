@@ -3,9 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ExampleGallery from "@/components/ExampleGallery";
 import Scrubber from "@/components/Scrubber";
 import StudyPanel from "@/components/StudyPanel";
+import { aiFailureReason } from "@/lib/aiReason";
 import type { AiOptions, AiStatus } from "@/components/editorExtras";
 import { LESSONS } from "@/lib/lessons";
 import { computeStats } from "@/lib/learn";
+import { diagnose } from "@/lib/diagnostics";
+import type { DiagOptions } from "@/components/editorExtras";
 import CodeEditor from "@/components/CodeEditor";
 import Console from "@/components/Console";
 import MemoryView from "@/components/MemoryView";
@@ -71,6 +74,7 @@ export default function Home() {
   const [showHeat, setShowHeat] = useState(false);
   const [aiOn, setAiOn] = useState(true);
   const [aiStatus, setAiStatus] = useState<AiStatus>("idle");
+  const [aiReason, setAiReason] = useState("");
   const aiOnRef = useRef(true);
 
   const stdin = typed.map((t) => `${t.text}
@@ -133,6 +137,19 @@ export default function Home() {
     () => ({
       enabled: () => aiOnRef.current,
       onStatus: setAiStatus,
+      onError: (e) => setAiReason(e instanceof Error ? e.message : "request failed"),
+      onNotice: (m) => flash(m, 6000),
+      generate: async (prompt, before, after, signal) => {
+        const res = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt, before, after }),
+          signal,
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(aiFailureReason(res.status, typeof body?.error === "string" ? body.error : ""));
+        return typeof body?.code === "string" ? body.code : "";
+      },
       fetchCompletion: async (prefix, suffix, signal) => {
         const res = await fetch("/api/complete", {
           method: "POST",
@@ -140,9 +157,33 @@ export default function Home() {
           body: JSON.stringify({ prefix, suffix }),
           signal,
         });
-        if (!res.ok) throw new Error(String(res.status));
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          throw new Error(aiFailureReason(res.status, typeof body?.error === "string" ? body.error : ""));
+        }
         const data = await res.json();
         return typeof data.completion === "string" ? data.completion : "";
+      },
+    }),
+    [],
+  );
+
+  const problems = useMemo(() => diagnose(code), [code]);
+  const errorCount = problems.filter((p) => p.severity === "error").length;
+  const warnCount = problems.length - errorCount;
+
+  const diagOptions: DiagOptions = useMemo(
+    () => ({
+      onNotice: (m) => flash(m, 6000),
+      fetchFix: async (c, line, message) => {
+        const res = await fetch("/api/fix", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: c, line, message }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : `HTTP ${res.status}`);
+        return data;
       },
     }),
     [],
@@ -258,9 +299,9 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKey);
   }, [idx, total, mode]);
 
-  const flash = (msg: string) => {
+  const flash = (msg: string, ms = 2400) => {
     setToast(msg);
-    setTimeout(() => setToast(""), 2400);
+    setTimeout(() => setToast(""), ms);
   };
 
   const load = (name: string) => {
@@ -290,6 +331,16 @@ export default function Home() {
       <header className="flex h-[58px] items-center gap-3 border-b border-white/10 bg-[#2e2f35] px-7">
         <span className="font-mono text-lg font-black text-cyan-300">C</span>
         <h1 className="text-sm font-semibold tracking-tight text-white">C Code Visualizer</h1>
+        <span
+          className={`ml-3 flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+            errorCount ? "border-red-400/50 bg-red-500/10 text-red-200" : warnCount ? "border-amber-400/40 bg-amber-400/10 text-amber-200" : "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+          }`}
+          title={problems[0] ? `Line ${problems[0].line}: ${problems[0].message}` : "Your code parses cleanly"}
+          aria-live="polite"
+        >
+          {errorCount ? `✕ ${errorCount} error${errorCount > 1 ? "s" : ""}` : warnCount ? `⚠ ${warnCount} warning${warnCount > 1 ? "s" : ""}` : "✓ No problems"}
+        </span>
+        {problems[0] && <span className="hidden max-w-md truncate text-xs text-white/50 lg:inline">Line {problems[0].line}: {problems[0].message}</span>}
       </header>
 
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-white/10 bg-[#27282c] px-6 py-2.5">
@@ -329,7 +380,7 @@ export default function Home() {
                 !aiOn ? "bg-white/30" : aiStatus === "thinking" ? "animate-pulse bg-amber-400" : aiStatus === "error" ? "bg-red-400" : aiStatus === "ready" ? "bg-emerald-400" : "bg-cyan-400"
               }`}
             />
-            AI autocomplete{aiOn ? (aiStatus === "thinking" ? " …" : aiStatus === "error" ? " (unavailable)" : "") : " off"}
+            AI autocomplete{aiOn ? (aiStatus === "thinking" ? " …" : aiStatus === "error" ? ` (${aiReason || "unavailable"})` : "") : " off"}
           </button>
         </div>
 
@@ -370,6 +421,7 @@ export default function Home() {
             hits={mode === "run" && showHeat && stats ? stats.hits : null}
             onLineClick={jumpToLine}
             ai={aiOptions}
+            diag={diagOptions}
           />
         </section>
 

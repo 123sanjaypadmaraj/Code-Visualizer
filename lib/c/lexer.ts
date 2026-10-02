@@ -4,6 +4,9 @@ export interface Token {
   k: "id" | "num" | "str" | "chr" | "p" | "eof";
   s: string;
   line: number;
+  /** source offsets [off, end) of the token in the program text (not set for tokens that come from macro bodies) */
+  off?: number;
+  end?: number;
   /** numeric literal payload */
   n?: { v: number; float: boolean; unsigned: boolean; long: boolean; single: boolean };
   /** decoded string / char literal */
@@ -53,6 +56,8 @@ function lexRaw(src: string, startLine: number, macros: Map<string, Macro>, allo
   let i = 0;
   let line = startLine;
   let lineStart = true;
+  // offsets are only meaningful for the main program text, not macro bodies lexed from a substring
+  const at = (a: number, b: number) => (allowDirectives ? { off: a, end: b } : {});
   while (i < src.length) {
     const c = src[i];
     if (c === "\n") {
@@ -117,7 +122,7 @@ function lexRaw(src: string, startLine: number, macros: Map<string, Macro>, allo
     if (isIdStart(c)) {
       let j = i + 1;
       while (j < src.length && isIdChar(src[j])) j++;
-      toks.push({ k: "id", s: src.slice(i, j), line });
+      toks.push({ k: "id", s: src.slice(i, j), line, ...at(i, j) });
       i = j;
       continue;
     }
@@ -158,7 +163,7 @@ function lexRaw(src: string, startLine: number, macros: Map<string, Macro>, allo
         else if (s === "f" && float) single = true;
         j++;
       }
-      toks.push({ k: "num", s: src.slice(i, j), line, n: { v, float, unsigned, long, single } });
+      toks.push({ k: "num", s: src.slice(i, j), line, ...at(i, j), n: { v, float, unsigned, long, single } });
       i = j;
       continue;
     }
@@ -166,15 +171,15 @@ function lexRaw(src: string, startLine: number, macros: Map<string, Macro>, allo
       let j = i + 1;
       let sv = "";
       while (j < src.length && src[j] !== '"') {
-        if (src[j] === "\n") throw new CError("Unterminated string literal", line);
+        if (src[j] === "\n") throw new CError("Unterminated string literal", line, { from: i, to: j, fixAt: j, insert: '"' });
         if (src[j] === "\\") {
           const [ch, nj] = readEscape(src, j + 1, line);
           sv += ch;
           j = nj;
         } else sv += src[j++];
       }
-      if (j >= src.length) throw new CError("Unterminated string literal", line);
-      toks.push({ k: "str", s: src.slice(i, j + 1), line, sv });
+      if (j >= src.length) throw new CError("Unterminated string literal", line, { from: i, to: src.length, fixAt: src.length, insert: '"' });
+      toks.push({ k: "str", s: src.slice(i, j + 1), line, ...at(i, j + 1), sv });
       i = j + 1;
       continue;
     }
@@ -182,24 +187,24 @@ function lexRaw(src: string, startLine: number, macros: Map<string, Macro>, allo
       let j = i + 1;
       let sv = "";
       while (j < src.length && src[j] !== "'") {
-        if (src[j] === "\n") throw new CError("Unterminated character literal", line);
+        if (src[j] === "\n") throw new CError("Unterminated character literal", line, { from: i, to: j, fixAt: j, insert: "'" });
         if (src[j] === "\\") {
           const [ch, nj] = readEscape(src, j + 1, line);
           sv += ch;
           j = nj;
         } else sv += src[j++];
       }
-      if (j >= src.length || sv.length === 0) throw new CError("Invalid character literal", line);
-      toks.push({ k: "chr", s: src.slice(i, j + 1), line, sv });
+      if (j >= src.length || sv.length === 0) throw new CError("Invalid character literal", line, { from: i, to: Math.min(j + 1, src.length) });
+      toks.push({ k: "chr", s: src.slice(i, j + 1), line, ...at(i, j + 1), sv });
       i = j + 1;
       continue;
     }
     const p = PUNCT.find((q) => src.startsWith(q, i));
-    if (!p) throw new CError(`Unexpected character '${c}'`, line);
-    toks.push({ k: "p", s: p, line });
+    if (!p) throw new CError(`Unexpected character '${c}'`, line, { from: i, to: i + 1 });
+    toks.push({ k: "p", s: p, line, ...at(i, i + p.length) });
     i += p.length;
   }
-  toks.push({ k: "eof", s: "", line });
+  toks.push({ k: "eof", s: "", line, ...at(src.length, src.length) });
   return toks;
 }
 
@@ -214,7 +219,7 @@ function expand(toks: Token[], macros: Map<string, Macro>, active: Set<string>, 
       continue;
     }
     if (m.params === null) {
-      const body = m.body.map((b) => ({ ...b, line: t.line }));
+      const body = m.body.map((b) => ({ ...b, line: t.line, off: t.off, end: t.end }));
       out.push(...expand(body, macros, new Set(active).add(t.s), depth + 1));
       continue;
     }
@@ -242,7 +247,7 @@ function expand(toks: Token[], macros: Map<string, Macro>, active: Set<string>, 
     for (const b of m.body) {
       const pi = b.k === "id" ? m.params.indexOf(b.s) : -1;
       if (pi >= 0) body.push(...expand(args[pi] ?? [], macros, active, depth + 1));
-      else body.push({ ...b, line: t.line });
+      else body.push({ ...b, line: t.line, off: t.off, end: t.end });
     }
     out.push(...expand(body, macros, new Set(active).add(t.s), depth + 1));
     i = j;

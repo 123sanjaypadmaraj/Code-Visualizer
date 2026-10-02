@@ -25,9 +25,16 @@ export type CType =
 
 export class CError extends Error {
   line: number;
-  constructor(message: string, line: number) {
+  /** character offsets of the offending source range (when known) */
+  from?: number;
+  to?: number;
+  /** offset where inserting `insert` would likely fix the error */
+  fixAt?: number;
+  insert?: string;
+  constructor(message: string, line: number, range?: { from?: number; to?: number; fixAt?: number; insert?: string }) {
     super(message);
     this.line = line;
+    if (range) Object.assign(this, range);
   }
 }
 

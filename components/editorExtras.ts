@@ -1,4 +1,6 @@
 import { autocompletion, completionStatus, snippetCompletion, type Completion, type CompletionContext } from "@codemirror/autocomplete";
+import { linter, lintGutter, type Action, type Diagnostic } from "@codemirror/lint";
+import { diagnose } from "@/lib/diagnostics";
 import { Prec, StateEffect, StateField, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, GutterMarker, ViewPlugin, WidgetType, gutter, keymap, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 
@@ -164,12 +166,17 @@ const ghostField = StateField.define<{ pos: number; text: string } | null>({
     ),
 });
 
-export type AiStatus = "idle" | "thinking" | "ready" | "error";
+export type AiStatus ="idle" | "thinking" | "ready" | "error";
 
 export interface AiOptions {
   enabled: () => boolean;
   fetchCompletion: (prefix: string, suffix: string, signal: AbortSignal) => Promise<string>;
   onStatus?: (s: AiStatus) => void;
+  onError?: (e: unknown) => void;
+  /** "/ai <request>" + Enter: write code from a plain-English request (before/after = code around the line) */
+  generate?: (prompt: string, before: string, after: string, signal: AbortSignal) => Promise<string>;
+  /** show a short message to the user (progress / errors of "/ai") */
+  onNotice?: (msg: string) => void;
   delayMs?: number;
 }
 
@@ -209,8 +216,11 @@ function aiPlugin(opts: AiOptions) {
           if (!text) return opts.onStatus?.("idle");
           this.view.dispatch({ effects: setGhost.of({ pos, text }) });
           opts.onStatus?.("ready");
-        } catch {
-          if (!ctrl.signal.aborted) opts.onStatus?.("error");
+        } catch (e) {
+          if (!ctrl.signal.aborted) {
+            opts.onError?.(e);
+            opts.onStatus?.("error");
+          }
         }
       }
       destroy() {
@@ -251,5 +261,118 @@ export function aiGhost(opts: AiOptions): Extension {
         },
       ]),
     ),
+  ];
+}
+
+/* ------------------------- "/ai <request>" writes code for you ------------------------- */
+
+const AI_LINE = /^(\s*)\/ai\s+(\S.*?)\s*$/;
+
+export function aiPrompt(opts: () => AiOptions | undefined): Extension {
+  let busy = false;
+  return Prec.highest(
+    keymap.of([
+      {
+        key: "Enter",
+        run(view) {
+          const o = opts();
+          if (!o?.generate || view.state.readOnly || busy) return false;
+          const sel = view.state.selection.main;
+          const line = view.state.doc.lineAt(sel.head);
+          const m = sel.empty && sel.head === line.to ? AI_LINE.exec(line.text) : null;
+          if (!m) return false;
+          const [, indent, request] = m;
+          const original = line.text;
+          const doc = view.state.doc;
+          const before = doc.sliceString(Math.max(0, line.from - 4000), line.from);
+          const after = doc.sliceString(line.to + 1, Math.min(doc.length, line.to + 2000));
+          busy = true;
+          o.onNotice?.("AI is writing code… (Esc to cancel)");
+          const ctrl = new AbortController();
+          const cancel = (e: KeyboardEvent) => {
+            if (e.key === "Escape") ctrl.abort();
+          };
+          document.addEventListener("keydown", cancel);
+          o.generate(request, before, after, ctrl.signal)
+            .then((code) => {
+              // the user may have edited while waiting: find the "/ai" line again
+              const cur = view.state.doc.toString();
+              const at = cur.indexOf(original);
+              if (at < 0) return o.onNotice?.("AI finished, but the /ai line was changed, so nothing was inserted");
+              const body = code
+                .split("\n")
+                .map((l, i) => (i === 0 || !l ? l : indent + l))
+                .join("\n");
+              view.dispatch({
+                changes: { from: at, to: at + original.length, insert: indent + body },
+                selection: { anchor: at + indent.length + body.length },
+                userEvent: "input.complete",
+              });
+              o.onNotice?.("AI wrote this code. Undo (Ctrl+Z) if it is not what you wanted.");
+            })
+            .catch((e) => {
+              o.onNotice?.(ctrl.signal.aborted ? "Cancelled" : e instanceof Error && e.message ? `AI could not write code: ${e.message}` : "AI could not write code");
+            })
+            .finally(() => {
+              busy = false;
+              document.removeEventListener("keydown", cancel);
+            });
+          return true;
+        },
+      },
+    ]),
+  );
+}
+
+/* ------------------------- live error underlines (like VS Code) ------------------------- */
+
+export interface DiagOptions {
+  /** ask the AI to rewrite one line; resolves with the new line text and a short explanation */
+  fetchFix?: (code: string, line: number, message: string) => Promise<{ replacement: string; explanation: string }>;
+  /** show a short message to the user (e.g. what the AI changed) */
+  onNotice?: (msg: string) => void;
+}
+
+export function liveDiagnostics(opts: () => DiagOptions | undefined): Extension {
+  return [
+    linter(
+      (view): Diagnostic[] =>
+        diagnose(view.state.doc.toString()).map((d) => {
+          const actions: Action[] = [];
+          if (d.fix) {
+            const fix = d.fix;
+            actions.push({
+              name: fix.label,
+              apply(v, from) {
+                // positions may have shifted since the check ran; keep the fix relative to the underlined range
+                const delta = from - d.from;
+                v.dispatch({ changes: { from: fix.from + delta, to: fix.to + delta, insert: fix.insert }, userEvent: "input.fix" });
+              },
+            });
+          }
+          if (d.severity === "error") {
+            actions.push({
+              name: "✨ Fix with AI",
+              async apply(v, from) {
+                const o = opts();
+                if (!o?.fetchFix) return;
+                const line = v.state.doc.lineAt(from);
+                try {
+                  o.onNotice?.("AI is looking at this line…");
+                  const r = await o.fetchFix(v.state.doc.toString(), line.number, d.message);
+                  const cur = v.state.doc.line(Math.min(line.number, v.state.doc.lines));
+                  v.dispatch({ changes: { from: cur.from, to: cur.to, insert: r.replacement }, userEvent: "input.fix" });
+                  o.onNotice?.(`AI fix: ${r.explanation}`);
+                } catch (e) {
+                  o.onNotice?.(e instanceof Error && e.message ? `AI fix failed: ${e.message}` : "AI fix failed");
+                }
+              },
+            });
+          }
+          return { from: d.from, to: d.to, severity: d.severity, message: d.message, source: "C check", actions };
+        }),
+      { delay: 350 },
+    ),
+    lintGutter(),
   ];
 }
