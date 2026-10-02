@@ -194,6 +194,8 @@ function aiPlugin(opts: AiOptions) {
         const line = u.state.doc.lineAt(head);
         // only suggest when the caret is at the end of a line
         if (head !== line.to) return;
+        // "/ai <request>" lines are prompts for the generator, not code to complete
+        if (/^\s*\/ai(\s|$)/.test(line.text)) return;
         if (!line.text.trim() && u.state.doc.lines === 1) return;
         this.timer = setTimeout(() => this.request(head), opts.delayMs ?? 650);
       }
@@ -328,7 +330,7 @@ export function aiPrompt(opts: () => AiOptions | undefined): Extension {
 
 export interface DiagOptions {
   /** ask the AI to rewrite one line; resolves with the new line text and a short explanation */
-  fetchFix?: (code: string, line: number, message: string) => Promise<{ replacement: string; explanation: string }>;
+  fetchFix?: (code: string, line: number, message: string) => Promise<{ replacement: string; explanation: string; endLine?: number }>;
   /** show a short message to the user (e.g. what the AI changed) */
   onNotice?: (msg: string) => void;
 }
@@ -361,7 +363,8 @@ export function liveDiagnostics(opts: () => DiagOptions | undefined): Extension 
                   o.onNotice?.("AI is looking at this line…");
                   const r = await o.fetchFix(v.state.doc.toString(), line.number, d.message);
                   const cur = v.state.doc.line(Math.min(line.number, v.state.doc.lines));
-                  v.dispatch({ changes: { from: cur.from, to: cur.to, insert: r.replacement }, userEvent: "input.fix" });
+                  const last = v.state.doc.line(Math.min(Math.max(r.endLine ?? line.number, line.number), v.state.doc.lines));
+                  v.dispatch({ changes: { from: cur.from, to: last.to, insert: r.replacement }, userEvent: "input.fix" });
                   o.onNotice?.(`AI fix: ${r.explanation}`);
                 } catch (e) {
                   o.onNotice?.(e instanceof Error && e.message ? `AI fix failed: ${e.message}` : "AI fix failed");

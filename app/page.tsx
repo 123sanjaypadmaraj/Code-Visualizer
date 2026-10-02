@@ -369,10 +369,10 @@ export default function Home() {
             Share
           </button>
           <button
-            className={`${bar} lift hidden md:flex ${aiOn ? "!border-cyan-400/50" : ""}`}
+            className={`${bar} lift hidden md:flex whitespace-nowrap ${aiOn ? "!border-cyan-400/50" : ""}`}
             onClick={toggleAi}
             aria-pressed={aiOn}
-            title="AI autocomplete: pause typing to get a suggestion, Tab accepts, Esc dismisses"
+            title={aiOn && aiStatus === "error" && aiReason ? `AI autocomplete failed: ${aiReason}` : "AI autocomplete: pause typing to get a suggestion, Tab accepts, Esc dismisses. Type /ai <request> and press Enter to generate code."}
           >
             <span
               aria-hidden

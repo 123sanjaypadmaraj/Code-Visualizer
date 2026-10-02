@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildGeneratePrompt, cleanGenerated } from "@/lib/generate";
+import { buildGeneratePrompt, cleanGenerated } from "../lib/generate";
 
 describe("cleanGenerated", () => {
   it("strips markdown fences and surrounding blank lines", () => {
