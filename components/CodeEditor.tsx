@@ -5,6 +5,7 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, Decoration, type DecorationSet } from "@codemirror/view";
 import { StateEffect, StateField, type Extension, type Range } from "@codemirror/state";
 import { useEffect, useMemo, useRef } from "react";
+import { aiGhost, cCompletions, hitsGutter, lineClick, setHitCounts, type AiOptions } from "./editorExtras";
 
 interface Marks {
   active: number | null;
@@ -60,6 +61,9 @@ const theme = EditorView.theme({
     color: "#4caf50",
     fontSize: "13px",
   },
+  ".cm-hits-gutter": { minWidth: "38px" },
+  ".cm-hit": { display: "inline-block", padding: "0 5px", margin: "1px 2px", borderRadius: "4px", fontSize: "11px", color: "#a5f3fc" },
+  ".cm-ghost": { color: "rgba(255,255,255,0.32)", fontStyle: "italic", whiteSpace: "pre" },
   ".cm-error-line": {
     background: "linear-gradient(90deg, rgba(248,113,113,0.3), rgba(248,113,113,0.05) 70%, transparent)",
     boxShadow: "inset 3px 0 0 #f87171",
@@ -73,6 +77,9 @@ export default function CodeEditor({
   errorLine,
   onCursorLine,
   readOnly = false,
+  hits = null,
+  onLineClick,
+  ai,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -82,11 +89,35 @@ export default function CodeEditor({
   onCursorLine?: (line: number) => void;
   /** lock editing (while the program is being visualized) */
   readOnly?: boolean;
+  /** per-line execution counts shown in a gutter (null hides it) */
+  hits?: Map<number, number> | null;
+  /** called with the 1-based line when the user clicks a line */
+  onLineClick?: (line: number) => void;
+  /** AI ghost-text autocomplete (omit to disable) */
+  ai?: AiOptions;
 }) {
   const view = useRef<EditorView | null>(null);
+  // refs keep the extension list stable so the editor is not reconfigured on every render
+  const clickRef = useRef(onLineClick);
+  const aiRef = useRef(ai);
+  useEffect(() => {
+    clickRef.current = onLineClick;
+    aiRef.current = ai;
+  });
   const extensions: Extension[] = useMemo(
     () => [
       cpp(),
+      cCompletions,
+      hitsGutter,
+      // eslint-disable-next-line react-hooks/refs -- refs are only read later, inside event callbacks
+      lineClick((l) => clickRef.current?.(l)),
+      // eslint-disable-next-line react-hooks/refs -- refs are only read later, inside event callbacks
+      aiGhost({
+        enabled: () => !!aiRef.current?.enabled(),
+        fetchCompletion: (p, s, sig) => aiRef.current!.fetchCompletion(p, s, sig),
+        onStatus: (st) => aiRef.current?.onStatus?.(st),
+        delayMs: ai?.delayMs,
+      }),
       marksField,
       theme,
       EditorView.updateListener.of((u) => {
@@ -94,8 +125,13 @@ export default function CodeEditor({
         onCursorLine?.(u.state.doc.lineAt(u.state.selection.main.head).number);
       }),
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ai/click handlers are read through refs
     [onCursorLine],
   );
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: setHitCounts(hits) });
+  }, [hits]);
 
   useEffect(() => {
     view.current?.dispatch({ effects: setMarks.of({ active: activeLine, error: errorLine }) });
@@ -117,11 +153,11 @@ export default function CodeEditor({
       extensions={extensions}
       onCreateEditor={(v) => {
         view.current = v;
-        v.dispatch({ effects: setMarks.of({ active: activeLine, error: errorLine }) });
+        v.dispatch({ effects: [setMarks.of({ active: activeLine, error: errorLine }), setHitCounts(hits)] });
       }}
       onChange={onChange}
       readOnly={readOnly}
-      basicSetup={{ foldGutter: false, highlightActiveLine: true }}
+      basicSetup={{ foldGutter: false, highlightActiveLine: true, autocompletion: false }}
       className="h-full"
     />
   );

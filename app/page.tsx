@@ -1,5 +1,11 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ExampleGallery from "@/components/ExampleGallery";
+import Scrubber from "@/components/Scrubber";
+import StudyPanel from "@/components/StudyPanel";
+import type { AiOptions, AiStatus } from "@/components/editorExtras";
+import { LESSONS } from "@/lib/lessons";
+import { computeStats } from "@/lib/learn";
 import CodeEditor from "@/components/CodeEditor";
 import Console from "@/components/Console";
 import MemoryView from "@/components/MemoryView";
@@ -9,6 +15,7 @@ import { runC } from "@/lib/c/interp";
 import type { RunResult } from "@/lib/c/types";
 
 const STORAGE_KEY = "c-visualizer:code";
+const AI_KEY = "c-visualizer:ai-complete";
 
 function encodeShare(code: string) {
   const bytes = new TextEncoder().encode(code);
@@ -60,6 +67,11 @@ export default function Home() {
   const [speed, setSpeed] = useState(1);
   const [toast, setToast] = useState("");
   const restored = useRef(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [showHeat, setShowHeat] = useState(false);
+  const [aiOn, setAiOn] = useState(true);
+  const [aiStatus, setAiStatus] = useState<AiStatus>("idle");
+  const aiOnRef = useRef(true);
 
   const stdin = typed.map((t) => `${t.text}
 `).join("");
@@ -79,6 +91,14 @@ export default function Home() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCode(initial);
     }
+    try {
+      const pref = localStorage.getItem(AI_KEY);
+      if (pref === "off") {
+        aiOnRef.current = false;
+        // preference is only readable in the browser, after mount
+        setAiOn(false);
+      }
+    } catch {}
     restored.current = true;
   }, []);
 
@@ -103,6 +123,52 @@ export default function Home() {
   const awaitingInput = !!run && run.inputNeededAt !== null && idx === total - 1;
   const shownOutput = step ? withEchoes(step.output, idx, typed) : "";
   const prevOutput = idx > 0 ? withEchoes(steps[idx - 1].output, idx - 1, typed) : "";
+
+  const lines = useMemo(() => code.split("\n"), [code]);
+  const lineText = useCallback((n: number) => lines[n - 1] ?? "", [lines]);
+  const stats = useMemo(() => (steps.length ? computeStats(steps, idx) : null), [steps, idx]);
+  const lesson = LESSONS[EXAMPLES.find((e) => e.code === code)?.name ?? ""];
+
+  const aiOptions: AiOptions = useMemo(
+    () => ({
+      enabled: () => aiOnRef.current,
+      onStatus: setAiStatus,
+      fetchCompletion: async (prefix, suffix, signal) => {
+        const res = await fetch("/api/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prefix, suffix }),
+          signal,
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        const data = await res.json();
+        return typeof data.completion === "string" ? data.completion : "";
+      },
+    }),
+    [],
+  );
+
+  const toggleAi = () => {
+    const next = !aiOn;
+    aiOnRef.current = next;
+    setAiOn(next);
+    setAiStatus("idle");
+    try {
+      localStorage.setItem(AI_KEY, next ? "on" : "off");
+    } catch {}
+    flash(next ? "AI autocomplete on: pause typing, then press Tab to accept" : "AI autocomplete off");
+  };
+
+  /** clicking a line in the editor while visualizing jumps to the next time that line runs */
+  const jumpToLine = (line: number) => {
+    if (mode !== "run" || !total) return;
+    const after = steps.findIndex((s, i) => i > idx && s.line === line);
+    const any = after >= 0 ? after : steps.findIndex((s) => s.line === line);
+    if (any >= 0) {
+      setPlaying(false);
+      setStepIdx(any);
+    }
+  };
 
   const start = () => {
     const r = runC(code, "", false);
@@ -202,6 +268,7 @@ export default function Home() {
     if (!ex) return;
     reset();
     setCode(ex.code);
+    setGalleryOpen(false);
   };
 
   const share = async () => {
@@ -244,8 +311,25 @@ export default function Home() {
               </option>
             ))}
           </select>
-          <button className={`${bar} hidden sm:flex`} onClick={share}>
+          <button className={`${bar} lift`} onClick={() => setGalleryOpen(true)}>
+            <span aria-hidden>▦</span> Browse
+          </button>
+          <button className={`${bar} lift hidden sm:flex`} onClick={share}>
             Share
+          </button>
+          <button
+            className={`${bar} lift hidden md:flex ${aiOn ? "!border-cyan-400/50" : ""}`}
+            onClick={toggleAi}
+            aria-pressed={aiOn}
+            title="AI autocomplete: pause typing to get a suggestion, Tab accepts, Esc dismisses"
+          >
+            <span
+              aria-hidden
+              className={`h-2 w-2 rounded-full ${
+                !aiOn ? "bg-white/30" : aiStatus === "thinking" ? "animate-pulse bg-amber-400" : aiStatus === "error" ? "bg-red-400" : aiStatus === "ready" ? "bg-emerald-400" : "bg-cyan-400"
+              }`}
+            />
+            AI autocomplete{aiOn ? (aiStatus === "thinking" ? " …" : aiStatus === "error" ? " (unavailable)" : "") : " off"}
           </button>
         </div>
 
@@ -277,9 +361,16 @@ export default function Home() {
         </div>
       </div>
 
+      {mode === "run" && total > 1 && <Scrubber steps={steps} idx={idx} setIdx={(i) => { setPlaying(false); setStepIdx(i); }} />}
+
       <main className="grid min-h-0 flex-1 lg:grid-cols-2">
         <section className="min-h-[340px] min-w-0 border-r border-white/10 bg-[#1d202a]">
-          <CodeEditor value={code} onChange={setCode} activeLine={mode === "run" && step ? step.line : null} errorLine={errorLine} readOnly={mode === "run"} />
+          <CodeEditor value={code} onChange={setCode} activeLine={mode === "run" && step ? step.line : null} errorLine={errorLine}
+            readOnly={mode === "run"}
+            hits={mode === "run" && showHeat && stats ? stats.hits : null}
+            onLineClick={jumpToLine}
+            ai={aiOptions}
+          />
         </section>
 
         <section className="flex min-h-0 min-w-0 flex-col gap-4 overflow-auto bg-[#1f1f20] p-4">
@@ -295,12 +386,50 @@ export default function Home() {
                 <MemoryView step={step} stepKey={idx} prevStep={idx > 0 ? steps[idx - 1] : undefined} />
               </div>
               <Explain step={step} warnings={run?.warnings ?? []} truncated={run?.truncated ?? false} />
+              <StudyPanel
+                lesson={lesson}
+                steps={steps}
+                idx={idx}
+                setIdx={(i) => {
+                  setPlaying(false);
+                  setStepIdx(i);
+                }}
+                running
+                lineText={lineText}
+                stats={stats}
+                showHeat={showHeat}
+                setShowHeat={setShowHeat}
+                warnings={run?.warnings ?? []}
+              />
             </>
           ) : (
-            !compileErr && <p className="m-auto max-w-xs text-center text-sm text-white/40">Press “Start Visualizer” to run your code step by step.</p>
+            <>
+              {!compileErr && (
+                <div className="fade-in m-auto flex max-w-sm flex-col items-center gap-3 py-6 text-center">
+                  <div className="float-y grid h-14 w-14 place-items-center rounded-2xl bg-cyan-400/15 font-mono text-2xl font-black text-cyan-300">C</div>
+                  <p className="text-sm text-white/55">
+                    Press <b className="text-white">Start Visualizer</b> to watch your code run step by step.
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {["Recursion", "Linked list", "Bubble sort"].map((n) => (
+                      <button key={n} onClick={() => load(n)} className="lift rounded-full border border-white/15 bg-[#23262f] px-3 py-1 text-xs text-white/80 hover:border-cyan-400/50">
+                        {n}
+                      </button>
+                    ))}
+                    <button onClick={() => setGalleryOpen(true)} className="lift rounded-full border border-cyan-400/40 px-3 py-1 text-xs text-cyan-200">
+                      More examples →
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-white/35">Tip: start typing and pause. AI autocomplete suggests the next lines; press Tab to accept.</p>
+                </div>
+              )}
+              <StudyPanel lesson={lesson} steps={[]} idx={0} setIdx={() => {}} running={false} lineText={lineText} stats={null} showHeat={showHeat} setShowHeat={setShowHeat} warnings={[]} />
+            </>
           )}
         </section>
       </main>
+
+      <ExampleGallery open={galleryOpen} onClose={() => setGalleryOpen(false)} onPick={load} />
 
       {toast && (
         <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-full border border-white/15 bg-[#10162b]/95 px-4 py-2 text-sm shadow-xl">

@@ -178,3 +178,27 @@ input[type="range"].timeline::-moz-range-thumb {
   background: white;
   border: 3px solid #8b5cf6;
 }
+
+/* ---- interactive polish ---- */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+.fade-in { animation: fade-in 0.18s ease-out both; }
+.pop-in { animation: pop-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.float-y { animation: float-y 3.2s ease-in-out infinite; }
+.lift { transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease; }
+.lift:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35); }
+.lift:active { transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) {
+  .fade-in, .pop-in, .float-y { animation: none; }
+  .lift, .lift:hover { transition: none; transform: none; }
+}

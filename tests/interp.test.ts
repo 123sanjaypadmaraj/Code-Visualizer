@@ -163,7 +163,8 @@ describe("example programs", () => {
       if (ex.bug) expect(r.error).not.toBeNull();
       else {
         expect(r.error).toBeNull();
-        expect(r.warnings).toEqual([]);
+        if (ex.leak) expect(r.warnings.join(" ")).toMatch(/leak/i);
+        else expect(r.warnings).toEqual([]);
         expect(r.steps[r.steps.length - 1].kind).toBe("end");
       }
       expect(r.steps.length).toBeGreaterThan(2);
