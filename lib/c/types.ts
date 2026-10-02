@@ -177,4 +177,6 @@ export interface RunResult {
   errorLine: number | null;
   warnings: string[];
   truncated: boolean;
+  /** step index where the program is waiting for (more) stdin, else null */
+  inputNeededAt: number | null;
 }

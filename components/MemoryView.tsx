@@ -1,8 +1,8 @@
 "use client";
 import { motion } from "framer-motion";
 import { useLayoutEffect, useRef, useState } from "react";
-import type { FrameView, HeapView, TraceStep, VarView } from "@/lib/c/types";
-import ValueView from "./ValueView";
+import type { FrameView, HeapView, TraceStep, ValView, VarView } from "@/lib/c/types";
+import ValueView, { type Peer } from "./ValueView";
 
 interface ArrowPath {
   d: string;
@@ -55,6 +55,18 @@ function Arrows({
           color: dot.dataset.color ?? "#a78bfa",
           bad: dot.dataset.bad === "1",
         });
+      });
+      el.querySelectorAll<HTMLElement>("[data-srcaddr]").forEach((cell) => {
+        const src = el.querySelector<HTMLElement>(`[data-addr="${cell.dataset.srcaddr}"]`);
+        const dest = cell.querySelector<HTMLElement>("[data-addr]") ?? cell;
+        if (!src) return;
+        const a = src.getBoundingClientRect();
+        const b = dest.getBoundingClientRect();
+        const sx = a.left + a.width / 2 - base.left;
+        const sy = a.top - base.top;
+        const ex = b.left + b.width / 2 - base.left;
+        const ey = b.bottom - base.top + 3;
+        next.push({ d: `M ${sx} ${sy} C ${sx} ${sy - 36}, ${ex} ${ey + 36}, ${ex} ${ey}`, color: "#fbbf24", bad: false });
       });
       setPaths((prev) =>
         JSON.stringify(prev) === JSON.stringify(next) ? prev : next,
@@ -119,9 +131,9 @@ function Arrows({
   );
 }
 
-function VarRow({ v, stepKey }: { v: VarView; stepKey: number }) {
+function VarRow({ v, stepKey, prev, peers }: { v: VarView; stepKey: number; prev?: ValView; peers?: Peer[] }) {
   return (
-    <div className={`px-3 py-2.5 ${v.isNew ? "rise" : ""}`}>
+    <div className={`px-3 py-2.5 ${v.v.k === "scalar" || v.v.k === "ptr" ? "" : "w-full"} ${v.isNew ? "rise" : ""}`}>
       <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2">
         <span className="font-mono text-sm font-semibold text-white">
           {v.name}
@@ -138,7 +150,7 @@ function VarRow({ v, stepKey }: { v: VarView; stepKey: number }) {
           0x{v.addr.toString(16)}
         </span>
       </div>
-      <ValueView v={v.v} stepKey={stepKey} />
+      <ValueView v={v.v} stepKey={stepKey} prev={prev} peers={peers} />
     </div>
   );
 }
@@ -147,11 +159,14 @@ function FrameCard({
   f,
   top,
   stepKey,
+  prevVars,
 }: {
   f: FrameView;
   top: boolean;
   stepKey: number;
+  prevVars: Map<number, ValView>;
 }) {
+  const peers: Peer[] = f.vars.flatMap((v) => (v.v.k === "scalar" ? [{ addr: v.v.addr, text: v.v.text }] : []));
   return (
     <motion.div
       layout="position"
@@ -159,7 +174,9 @@ function FrameCard({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ type: "spring", stiffness: 380, damping: 32 }}
-      className={`overflow-hidden rounded-2xl border ${
+      className={`min-w-60 overflow-hidden rounded-2xl border ${
+        f.vars.some((v) => v.v.k !== "scalar" && v.v.k !== "ptr") ? "w-full" : "flex-1"
+      } ${
         top
           ? "border-violet-400/40 shadow-[0_8px_40px_-12px_rgba(139,92,246,0.55)]"
           : "border-white/10"
@@ -181,10 +198,10 @@ function FrameCard({
           </span>
         )}
       </div>
-      <div className="divide-y divide-white/[0.06]">
+      <div className="flex flex-wrap items-start gap-x-2">
         {f.vars.length ? (
           f.vars.map((v) => (
-            <VarRow key={`${v.name}@${v.addr}`} v={v} stepKey={stepKey} />
+            <VarRow key={`${v.name}@${v.addr}`} v={v} stepKey={stepKey} prev={prevVars.get(v.addr)} peers={peers} />
           ))
         ) : (
           <p className="px-3 py-3 text-xs text-white/35">No variables yet</p>
@@ -246,16 +263,21 @@ function Empty({ children }: { children: React.ReactNode }) {
 export default function MemoryView({
   step,
   stepKey,
+  prevStep,
 }: {
   step: TraceStep;
   stepKey: number;
+  prevStep?: TraceStep;
 }) {
+  // what each variable held one step ago, keyed by address (to draw arrows when array values move)
+  const prevVars = new Map<number, ValView>();
+  if (prevStep) for (const f of prevStep.frames) for (const v of f.vars) prevVars.set(v.addr, v.v);
   const root = useRef<HTMLDivElement>(null);
   const frames = [...step.frames].reverse();
   return (
     <div
       ref={root}
-      className="relative grid items-start gap-5 p-4 md:grid-cols-2 md:pr-12"
+      className="relative flex flex-col gap-5 p-4 pr-8"
     >
       <section className="flex flex-col gap-3">
         <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-300">
@@ -275,14 +297,17 @@ export default function MemoryView({
           </div>
         )}
         {frames.length ? (
-          frames.map((f, i) => (
-            <FrameCard
-              key={`${f.fn}-${frames.length - i}`}
-              f={f}
-              top={i === 0}
-              stepKey={stepKey}
-            />
-          ))
+          <div className="flex flex-wrap items-start gap-3">
+            {frames.map((f, i) => (
+              <FrameCard
+                key={`${f.fn}-${frames.length - i}`}
+                f={f}
+                top={i === 0}
+                stepKey={stepKey}
+                prevVars={prevVars}
+              />
+            ))}
+          </div>
         ) : (
           <Empty>The stack is empty — the program has finished.</Empty>
         )}
@@ -293,7 +318,13 @@ export default function MemoryView({
           Heap
         </h3>
         {step.heap.length ? (
-          step.heap.map((h) => <HeapCard key={h.id} h={h} stepKey={stepKey} />)
+          <div className="flex flex-wrap items-start gap-3">
+            {step.heap.map((h) => (
+              <div key={h.id} className="min-w-60 flex-1">
+                <HeapCard h={h} stepKey={stepKey} />
+              </div>
+            ))}
+          </div>
         ) : (
           <Empty>
             Nothing on the heap.

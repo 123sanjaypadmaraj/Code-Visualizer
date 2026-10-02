@@ -1,4 +1,6 @@
 "use client";
+import { useLayoutEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import type { ValView } from "@/lib/c/types";
 
 const PTR_COLORS = ["#a78bfa", "#22d3ee", "#f472b6", "#fbbf24", "#34d399", "#fb7185"];
@@ -61,7 +63,111 @@ function Leaf({ v, stepKey }: { v: Extract<ValView, { k: "scalar" | "ptr" }>; st
 
 const isLeaf = (v: ValView): v is Extract<ValView, { k: "scalar" | "ptr" }> => v.k === "scalar" || v.k === "ptr";
 
-export default function ValueView({ v, stepKey }: { v: ValView; stepKey: number }) {
+interface Move {
+  from: number;
+  to: number;
+}
+
+/** Which array slots just received a value that used to live in another slot. */
+function findMoves(items: ValView[], prev: ValView | undefined): Move[] {
+  return findChanges(items, prev).moves;
+}
+
+export interface Peer {
+  addr: number;
+  text: string;
+}
+
+/** Array slots that got a value from another slot (`moves`) or from nowhere in the array (`fresh`, e.g. `a[j] = tmp`). */
+function findChanges(items: ValView[], prev: ValView | undefined): { moves: Move[]; fresh: number[] } {
+  if (!prev || prev.k !== "array" || prev.items.length !== items.length) return { moves: [], fresh: [] };
+  const fresh: number[] = [];
+  const text = (x: ValView) => (x.k === "scalar" || x.k === "ptr" ? x.text : null);
+  const moves: Move[] = [];
+  items.forEach((it, i) => {
+    const now = text(it);
+    if (now === null || now === text(prev.items[i]) || (it.k === "scalar" && it.uninit)) return;
+    let best = -1;
+    prev.items.forEach((p, k) => {
+      if (k !== i && text(p) === now && (best < 0 || Math.abs(k - i) < Math.abs(best - i))) best = k;
+    });
+    if (best >= 0) moves.push({ from: best, to: i });
+    else fresh.push(i);
+  });
+  return { moves, fresh };
+}
+
+function ArrayRow({ items, prev, more, stepKey, peers }: { items: ValView[]; prev?: ValView; more: number; stepKey: number; peers?: Peer[] }) {
+  const root = useRef<HTMLDivElement>(null);
+  const { moves, fresh } = findChanges(items, prev);
+  // value came from a plain variable (like tmp): the last declared one holding that value
+  const srcOf = (i: number) => {
+    const it = items[i];
+    const text = it.k === "scalar" || it.k === "ptr" ? it.text : null;
+    return text === null ? undefined : [...(peers ?? [])].reverse().find((p) => p.text === text)?.addr;
+  };
+  const [arcs, setArcs] = useState<{ d: string; key: string }[]>([]);
+  const sig = moves.map((m) => `${m.from}>${m.to}`).join(",");
+
+  useLayoutEffect(() => {
+    const el = root.current;
+    if (!el || !sig) {
+      setArcs([]);
+      return;
+    }
+    const base = el.getBoundingClientRect();
+    const next = sig.split(",").map((pair) => {
+      const [from, to] = pair.split(">").map(Number);
+      const rect = (i: number) => el.querySelector<HTMLElement>(`[data-cell="${i}"]`)?.getBoundingClientRect();
+      const a = rect(from);
+      const b = rect(to);
+      if (!a || !b) return { d: "", key: pair };
+      const x1 = a.left + a.width / 2 - base.left + el.scrollLeft;
+      const x2 = b.left + b.width / 2 - base.left + el.scrollLeft;
+      const y = 26;
+      const lift = Math.min(22, 10 + Math.abs(x2 - x1) / 8);
+      return { d: `M ${x1} ${y} C ${x1} ${y - lift}, ${x2} ${y - lift}, ${x2} ${y - 2}`, key: pair };
+    });
+    setArcs(next.filter((a) => a.d));
+  }, [sig, stepKey]);
+
+  return (
+    <div ref={root} className="relative flex flex-nowrap items-end gap-x-1 overflow-x-auto pb-1 pt-7">
+      {arcs.length > 0 && (
+        <svg className="pointer-events-none absolute left-0 top-0 h-8 w-full overflow-visible" aria-hidden>
+          <defs>
+            <marker id="mv-ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#fbbf24" />
+            </marker>
+          </defs>
+          {arcs.map((a) => (
+            <motion.path
+              key={`${a.key}-${stepKey}`}
+              d={a.d}
+              fill="none"
+              stroke="#fbbf24"
+              strokeWidth={2}
+              strokeLinecap="round"
+              markerEnd="url(#mv-ah)"
+              initial={{ pathLength: 0, opacity: 0 }}
+              animate={{ pathLength: 1, opacity: 1 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+            />
+          ))}
+        </svg>
+      )}
+      {items.map((it, i) => (
+        <div key={i} data-cell={i} data-srcaddr={fresh.includes(i) ? srcOf(i) : undefined} className="flex shrink-0 flex-col items-center gap-1">
+          <ValueView v={it} stepKey={stepKey} />
+          <span className="font-mono text-[11px] text-white/50">{i}</span>
+        </div>
+      ))}
+      {more > 0 && <span className="self-center pl-1 text-xs text-white/40">… {more} more</span>}
+    </div>
+  );
+}
+
+export default function ValueView({ v, stepKey, prev, peers }: { v: ValView; stepKey: number; prev?: ValView; peers?: Peer[] }) {
   if (isLeaf(v)) return <Leaf v={v} stepKey={stepKey} />;
 
   if (v.k === "struct") {
@@ -101,15 +207,7 @@ export default function ValueView({ v, stepKey }: { v: ValView; stepKey: number 
           {v.more > 0 && <span className="text-xs text-white/40">… {v.more} more</span>}
         </div>
       ) : (
-        <div className="flex flex-wrap gap-x-1 gap-y-2">
-          {v.items.map((it, i) => (
-            <div key={i} className="flex flex-col items-center gap-1">
-              <ValueView v={it} stepKey={stepKey} />
-              <span className="font-mono text-[10px] text-white/40">{i}</span>
-            </div>
-          ))}
-          {v.more > 0 && <span className="self-center pl-1 text-xs text-white/40">… {v.more} more</span>}
-        </div>
+        <ArrayRow items={v.items} prev={prev} more={v.more} stepKey={stepKey} peers={peers} />
       )}
     </div>
   );

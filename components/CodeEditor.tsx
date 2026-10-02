@@ -40,15 +40,25 @@ const marksField = StateField.define<DecorationSet>({
 });
 
 const theme = EditorView.theme({
-  "&": { height: "100%", fontSize: "14px", backgroundColor: "transparent !important" },
+  "&": { height: "100%", fontSize: "14px", backgroundColor: "#1d202a !important" },
   ".cm-scroller": { fontFamily: "var(--font-geist-mono), ui-monospace, monospace", lineHeight: "1.65" },
   ".cm-gutters": { backgroundColor: "transparent !important", border: "none", color: "rgba(255,255,255,0.28)" },
   ".cm-activeLine": { backgroundColor: "rgba(255,255,255,0.03)" },
   ".cm-activeLineGutter": { backgroundColor: "transparent", color: "rgba(255,255,255,0.7)" },
   ".cm-content": { caretColor: "#67e8f9", padding: "10px 0" },
   ".cm-active-step": {
-    background: "linear-gradient(90deg, rgba(139,92,246,0.32), rgba(34,211,238,0.07) 70%, transparent)",
-    boxShadow: "inset 3px 0 0 #a78bfa",
+    position: "relative",
+    background: "rgba(76,175,80,0.1)",
+    borderTop: "1px solid #4caf50",
+    borderBottom: "1px solid #4caf50",
+  },
+  ".cm-active-step::after": {
+    content: '"◀"',
+    position: "absolute",
+    right: "6px",
+    top: "0",
+    color: "#4caf50",
+    fontSize: "13px",
   },
   ".cm-error-line": {
     background: "linear-gradient(90deg, rgba(248,113,113,0.3), rgba(248,113,113,0.05) 70%, transparent)",
@@ -62,6 +72,7 @@ export default function CodeEditor({
   activeLine,
   errorLine,
   onCursorLine,
+  readOnly = false,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -69,12 +80,10 @@ export default function CodeEditor({
   errorLine: number | null;
   /** called with the 1-based line the caret is on whenever it moves or the text changes */
   onCursorLine?: (line: number) => void;
+  /** lock editing (while the program is being visualized) */
+  readOnly?: boolean;
 }) {
   const view = useRef<EditorView | null>(null);
-  const cursorCb = useRef(onCursorLine);
-  useEffect(() => {
-    cursorCb.current = onCursorLine;
-  });
   const extensions: Extension[] = useMemo(
     () => [
       cpp(),
@@ -82,10 +91,10 @@ export default function CodeEditor({
       theme,
       EditorView.updateListener.of((u) => {
         if (!u.selectionSet && !u.docChanged) return;
-        cursorCb.current?.(u.state.doc.lineAt(u.state.selection.main.head).number);
+        onCursorLine?.(u.state.doc.lineAt(u.state.selection.main.head).number);
       }),
     ],
-    [],
+    [onCursorLine],
   );
 
   useEffect(() => {
@@ -111,6 +120,7 @@ export default function CodeEditor({
         v.dispatch({ effects: setMarks.of({ active: activeLine, error: errorLine }) });
       }}
       onChange={onChange}
+      readOnly={readOnly}
       basicSetup={{ foldGutter: false, highlightActiveLine: true }}
       className="h-full"
     />

@@ -11,19 +11,7 @@ export const KIND_STYLE: Record<StepKind, { label: string; dot: string; chip: st
   error: { label: "Error", dot: "bg-red-400", chip: "bg-red-400/20 text-red-200" },
 };
 
-const Icon = ({ d }: { d: string }) => (
-  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden>
-    <path d={d} />
-  </svg>
-);
-const ICONS = {
-  first: "M6 6h2v12H6zm3.5 6 8.5 6V6z",
-  prev: "M15.4 6 9 12l6.4 6z",
-  next: "M8.6 6 15 12l-6.4 6z",
-  last: "M16 6h2v12h-2zM6 18l8.5-6L6 6z",
-  play: "M8 5v14l11-7z",
-  pause: "M6 5h4v14H6zm8 0h4v14h-4z",
-};
+const SPEEDS = [1, 2, 4, 0.5];
 
 export function Controls({
   idx,
@@ -47,63 +35,45 @@ export function Controls({
     setIdx(Math.max(0, Math.min(total - 1, i)));
   };
   const atEnd = idx >= total - 1;
+  const pct = total > 1 ? (idx / (total - 1)) * 100 : 0;
+  const box = "flex h-10 items-center gap-2 rounded border border-white/15 bg-[#23262f] px-4 text-sm font-medium text-white transition-colors hover:bg-[#2c303b] disabled:cursor-not-allowed disabled:opacity-40";
   return (
-    <div className="flex flex-wrap items-center gap-2 px-3 py-2.5">
-      <div className="flex items-center gap-1">
-        <button className="btn !px-2" onClick={() => go(0)} disabled={idx === 0} aria-label="First step" title="First step (Home)">
-          <Icon d={ICONS.first} />
-        </button>
-        <button className="btn !px-2" onClick={() => go(idx - 1)} disabled={idx === 0} aria-label="Previous step" title="Previous (←)">
-          <Icon d={ICONS.prev} />
-        </button>
-        <button
-          className="btn btn-primary !px-3.5"
-          onClick={() => {
-            if (!playing && atEnd) setIdx(0);
-            setPlaying(!playing);
-          }}
-          disabled={total === 0}
-          aria-label={playing ? "Pause" : "Play"}
-          title="Play / pause (Space)"
-        >
-          <Icon d={playing ? ICONS.pause : ICONS.play} />
-          {playing ? "Pause" : atEnd ? "Replay" : "Play"}
-        </button>
-        <button className="btn !px-2" onClick={() => go(idx + 1)} disabled={atEnd} aria-label="Next step" title="Next (→)">
-          <Icon d={ICONS.next} />
-        </button>
-        <button className="btn !px-2" onClick={() => go(total - 1)} disabled={atEnd} aria-label="Last step" title="Last step (End)">
-          <Icon d={ICONS.last} />
-        </button>
-      </div>
-      <input
-        type="range"
-        className="timeline mx-1 min-w-24 flex-1"
-        min={0}
-        max={Math.max(total - 1, 0)}
-        value={idx}
-        onChange={(e) => go(Number(e.target.value))}
-        disabled={total === 0}
-        aria-label="Step position"
-        style={{
-          background: `linear-gradient(90deg, #8b5cf6 ${total > 1 ? (idx / (total - 1)) * 100 : 0}%, rgba(255,255,255,0.1) 0)`,
+    <div className="flex items-center gap-2">
+      <button className={box} onClick={() => go(idx - 1)} disabled={idx === 0} title="Previous (←)">
+        <span aria-hidden>⏮</span> Prev Step
+      </button>
+      <button
+        className="flex h-10 min-w-44 items-stretch overflow-hidden rounded border border-white/15 bg-[#23262f] text-left disabled:opacity-40"
+        onClick={() => {
+          if (!playing && atEnd) setIdx(0);
+          setPlaying(!playing);
         }}
-      />
-      <span className="w-20 text-right font-mono text-xs tabular-nums text-white/55">
-        {total ? `${idx + 1} / ${total}` : "–"}
-      </span>
-      <select
-        value={speed}
-        onChange={(e) => setSpeed(Number(e.target.value))}
-        aria-label="Playback speed"
-        className="rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1.5 text-xs text-white/80"
+        disabled={total === 0}
+        aria-label={playing ? "Pause" : "Play"}
+        title="Play / pause (Space)"
       >
-        {[0.5, 1, 2, 4].map((s) => (
-          <option key={s} value={s} className="bg-slate-900">
-            {s}×
-          </option>
-        ))}
-      </select>
+        <span className="grid w-10 place-items-center bg-cyan-400 text-[#10151c]" aria-hidden>
+          {playing ? "❚❚" : "▶"}
+        </span>
+        <span className="flex flex-1 flex-col justify-center gap-1 px-3">
+          <span className="text-xs text-white/70">
+            Step <b className="text-white">{total ? idx + 1 : 0}</b> of {total}
+          </span>
+          <span className="h-1 rounded bg-white/15">
+            <span className="block h-1 rounded bg-cyan-400" style={{ width: `${pct}%` }} />
+          </span>
+        </span>
+      </button>
+      <button
+        className="h-10 w-12 rounded border border-white/15 bg-[#23262f] text-sm font-semibold text-white hover:bg-[#2c303b]"
+        onClick={() => setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length])}
+        title="Playback speed"
+      >
+        {speed}x
+      </button>
+      <button className={box} onClick={() => go(idx + 1)} disabled={atEnd} title="Next (→)">
+        Next Step <span aria-hidden>⏭</span>
+      </button>
     </div>
   );
 }

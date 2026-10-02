@@ -1,61 +1,74 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+/** Programiz-style output box: program output with an inline input line while the program waits on stdin. */
 export default function Console({
   output,
   prevOutput,
-  stdin,
-  setStdin,
+  awaitingInput,
+  onSubmit,
+  onEof,
 }: {
   output: string;
   prevOutput: string;
-  stdin: string;
-  setStdin: (s: string) => void;
+  awaitingInput: boolean;
+  onSubmit: (line: string) => void;
+  onEof: () => void;
 }) {
-  const [tab, setTab] = useState<"out" | "in">("out");
+  const [text, setText] = useState("");
+  const input = useRef<HTMLInputElement>(null);
   const fresh = output.startsWith(prevOutput) ? output.slice(prevOutput.length) : output;
   const old = output.slice(0, output.length - fresh.length);
+
+  useEffect(() => {
+    if (awaitingInput) input.current?.focus();
+  }, [awaitingInput]);
+
+  const submit = () => {
+    onSubmit(text);
+    setText("");
+  };
+
   return (
-    <div className="glass flex min-h-0 flex-col overflow-hidden rounded-2xl">
-      <div className="flex items-center gap-1 border-b border-white/10 px-2 pt-1.5">
-        {(
-          [
-            ["out", "Output"],
-            ["in", "Input (stdin)"],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            onClick={() => setTab(id)}
-            className={`rounded-t-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-              tab === id ? "bg-black/30 text-white" : "text-white/45 hover:text-white/75"
-            }`}
-          >
-            {label}
-            {id === "in" && stdin && <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-cyan-300" />}
-          </button>
-        ))}
-      </div>
-      {tab === "out" ? (
-        <pre className="h-28 flex-1 overflow-auto whitespace-pre-wrap bg-black/30 px-4 py-3 font-mono text-[13px] leading-relaxed">
-          {output ? (
-            <>
-              <span className="text-emerald-300/80">{old}</span>
-              <span className="rounded bg-emerald-400/20 text-emerald-200">{fresh}</span>
-            </>
-          ) : (
-            <span className="text-white/30">$ program output appears here</span>
+    <div className="relative">
+      <span className="absolute -top-px left-0 z-10 rounded-t border border-b-0 border-[#5a3b3b] bg-[#1f1f20] px-2 py-0.5 font-mono text-[11px] text-[#e5848a]">
+        Output
+      </span>
+      <div className="mt-[22px] flex min-h-[104px] flex-col gap-2 rounded border border-white/10 bg-[#2a2b2e] px-4 py-3">
+        <pre className="max-h-40 flex-1 overflow-auto whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-white/90">
+          <span>{old}</span>
+          <span className="bg-emerald-400/20">{fresh}</span>
+          {awaitingInput && (
+            <input
+              ref={input}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+              aria-label="Program input"
+              spellCheck={false}
+              className="w-40 bg-transparent font-mono text-[13px] text-cyan-200 caret-cyan-300 outline-none"
+            />
           )}
         </pre>
-      ) : (
-        <textarea
-          value={stdin}
-          onChange={(e) => setStdin(e.target.value)}
-          placeholder="Type what scanf() / getchar() / fgets() should read, e.g.  7  or  3 4"
-          spellCheck={false}
-          className="h-28 flex-1 resize-none bg-black/30 px-4 py-3 font-mono text-[13px] leading-relaxed text-cyan-100 placeholder:text-white/30"
-        />
-      )}
+        {awaitingInput && (
+          <div className="flex items-center justify-end gap-2">
+            <button onClick={onEof} className="rounded px-2 py-1 text-[11px] text-white/45 hover:text-white/80" title="Tell the program there is no more input (EOF)">
+              End input
+            </button>
+            <button
+              onClick={submit}
+              className="rounded border border-cyan-400/40 px-3 py-1 text-xs text-cyan-300 hover:bg-cyan-400/10"
+            >
+              Submit
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

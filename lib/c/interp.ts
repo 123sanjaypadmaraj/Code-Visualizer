@@ -182,13 +182,20 @@ class Machine {
   line = 1;
   ticks = 0;
   inPos = 0;
+  /** index of the step whose statement tried to read input that isn't there yet */
+  starved: number | null = null;
   randState = 12345;
   nextBlock = 1;
 
   constructor(
     public prog: Program,
     public stdin: string,
+    public eof = false,
   ) {}
+
+  starve() {
+    if (this.starved === null && !this.eof) this.starved = this.steps.length;
+  }
 
   tick() {
     if (++this.ticks > MAX_TICKS) this.err("The program ran for too long — is there an infinite loop?");
@@ -1576,6 +1583,7 @@ class Machine {
         case "d": case "i": case "u": case "x": case "o": {
           ws();
           if (this.inPos >= this.stdin.length) {
+            this.starve();
             if (assigned === 0 && !sawInput) return I(-1);
             break outer;
           }
@@ -1596,6 +1604,7 @@ class Machine {
         case "f": case "e": case "g": case "E": case "G": {
           ws();
           if (this.inPos >= this.stdin.length) {
+            this.starve();
             if (assigned === 0 && !sawInput) return I(-1);
             break outer;
           }
@@ -1613,6 +1622,7 @@ class Machine {
         }
         case "c": {
           if (this.inPos >= this.stdin.length) {
+            this.starve();
             if (assigned === 0 && !sawInput) return I(-1);
             break outer;
           }
@@ -1628,6 +1638,7 @@ class Machine {
         case "s": {
           ws();
           if (this.inPos >= this.stdin.length) {
+            this.starve();
             if (assigned === 0 && !sawInput) return I(-1);
             break outer;
           }
@@ -1717,7 +1728,7 @@ class Machine {
         errorLine = this.line;
       }
     }
-    return { steps: this.steps, error, errorLine, warnings: this.warnings, truncated };
+    return { steps: this.steps, error, errorLine, warnings: this.warnings, truncated, inputNeededAt: this.starved };
   }
 }
 
@@ -1792,6 +1803,7 @@ const BUILTINS: Record<string, Builtin> = {
   fflush: () => I(0),
   getchar: (m) => {
     if (m.inPos >= m.stdin.length) {
+      m.starve();
       m.events.push("getchar found no more input and returns EOF (-1).");
       return I(-1);
     }
@@ -1802,6 +1814,7 @@ const BUILTINS: Record<string, Builtin> = {
   scanf: (m, a, e) => m.scanf(m.cstr(a[0].v), a.slice(1), e, 1),
   fgets: (m, a) => {
     const n = num(a[1]);
+    if (m.inPos >= m.stdin.length) m.starve();
     if (m.inPos >= m.stdin.length || n <= 0) return { t: ptrTo(CHAR), v: 0 };
     let s = "";
     while (s.length < n - 1 && m.inPos < m.stdin.length) {
@@ -2021,13 +2034,13 @@ const BUILTINS: Record<string, Builtin> = {
   },
 };
 
-export function runC(source: string, stdin = ""): RunResult {
+export function runC(source: string, stdin = "", eof = false): RunResult {
   let prog: Program;
   try {
     prog = parseC(source);
   } catch (e) {
-    if (e instanceof CError) return { steps: [], error: e.message, errorLine: e.line, warnings: [], truncated: false };
+    if (e instanceof CError) return { steps: [], error: e.message, errorLine: e.line, warnings: [], truncated: false, inputNeededAt: null };
     throw e;
   }
-  return new Machine(prog, stdin).run();
+  return new Machine(prog, stdin, eof).run();
 }
