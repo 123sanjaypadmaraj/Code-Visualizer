@@ -4,6 +4,7 @@ import ExampleGallery from "@/components/ExampleGallery";
 import Scrubber from "@/components/Scrubber";
 import StudyPanel from "@/components/StudyPanel";
 import { aiFailureReason } from "@/lib/aiReason";
+import { runCAsync } from "@/lib/c/runAsync";
 import { buildShareHash, parseShareHash } from "@/lib/share";
 import type { AiOptions, AiStatus } from "@/components/editorExtras";
 import { LESSONS } from "@/lib/lessons";
@@ -207,8 +208,22 @@ export default function Home() {
     }
   };
 
-  const start = () => {
-    const r = runC(code, "", false);
+  const runToken = useRef(0);
+  const [busy, setBusy] = useState(false);
+
+  /** Run in a worker; a newer call (or Reset) makes older results get dropped. */
+  const execute = async (src: string, input: string, closed: boolean) => {
+    const token = ++runToken.current;
+    setBusy(true);
+    const r = await runCAsync(src, input, closed);
+    if (token !== runToken.current) return null;
+    setBusy(false);
+    return r;
+  };
+
+  const start = async () => {
+    const r = await execute(code, "", false);
+    if (!r) return;
     if (!r.steps.length) {
       setCompileErr({ line: r.errorLine, msg: r.error ?? "Could not compile." });
       return;
@@ -223,6 +238,8 @@ export default function Home() {
   };
 
   const reset = () => {
+    runToken.current++;
+    setBusy(false);
     setMode("edit");
     setRun(null);
     setTyped([]);
@@ -232,21 +249,23 @@ export default function Home() {
     setCompileErr(null);
   };
 
-  const submitInput = (text: string) => {
+  const submitInput = async (text: string) => {
     if (!run || run.inputNeededAt === null) return;
     const at = run.inputNeededAt;
     const next = [...typed, { atStep: at, outLen: run.steps[at].output.length, text }];
-    const r = runC(code, next.map((t) => `${t.text}
+    const r = await execute(code, next.map((t) => `${t.text}
 `).join(""), eof);
+    if (!r) return;
     setTyped(next);
     setRun(r);
     setStepIdx(at + 1 < r.steps.length ? at + 1 : at);
   };
 
-  const closeInput = () => {
+  const closeInput = async () => {
     if (!run) return;
     const at = run.inputNeededAt;
-    const r = runC(code, stdin, true);
+    const r = await execute(code, stdin, true);
+    if (!r) return;
     setEof(true);
     setRun(r);
     if (at !== null && at + 1 < r.steps.length) setStepIdx(at + 1);
@@ -413,12 +432,13 @@ export default function Home() {
           {mode === "edit" ? (
             <button
               onClick={start}
+              disabled={busy}
               className="btn-primary pulse-glow flex h-10 items-stretch overflow-hidden rounded-xl text-sm font-semibold text-white transition hover:brightness-110"
             >
               <span className="grid w-10 place-items-center bg-black/25" aria-hidden>
                 ▶
               </span>
-              <span className="grid place-items-center px-6">Start Visualizer</span>
+              <span className="grid place-items-center px-6">{busy ? "Running…" : "Start Visualizer"}</span>
             </button>
           ) : (
             <Controls idx={idx} total={total} setIdx={setStepIdx} playing={playing} setPlaying={setPlaying} speed={speed} setSpeed={setSpeed} />
