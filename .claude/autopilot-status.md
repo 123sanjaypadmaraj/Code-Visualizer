@@ -65,6 +65,9 @@
 - [x] **Route share-link-with-step restore through the Web Worker** — status: done
   The mount effect in `app/page.tsx` (the `shared.step !== null` branch) still calls `runC` synchronously, so opening a `#code=...&step=N` link to a heavy or looping program freezes the page on load before anything renders, which is the very case the worker was added for. Replace it with `runCAsync` from `lib/c/runAsync.ts` (show the same "Running…" Start-button state and use the existing stale-result token so a Reset or edit during the run discards the result), keep the clamp to `[0, visible-1]`, and when the result has an `error` (including the 8s timeout message) show it in the existing compile-error banner instead of silently ignoring it; then remove the now-unused `runC` import if nothing else in the page uses it. Done when lint/typecheck/test/build pass and opening a share link with `&step=0` for `int main(){while(1){}}` leaves the editor usable and shows the timeout or step-cap result.
 
+- [x] **Unit-test `runCAsync` (timeout, worker failure, fallback) and drop "Internal error" from worker failures** — status: done
+  The 8s timeout in `lib/c/runAsync.ts` has never run in any test (the e2e loop hits the 4M-tick cap first), and its worker `onerror`/`ok:false` paths show "Internal error: ...", the exact wording `tests/robustness.test.ts` forbids for beginners. Add `tests/runAsync.test.ts` that stubs `globalThis.Worker` with a fake class (`vi.stubGlobal`) and uses `vi.useFakeTimers()` to cover: a posted `{ ok: true, result }` resolves to that result and calls `terminate()` once; no reply resolves after `RUN_TIMEOUT_MS` with `TIMEOUT_MESSAGE` and terminates the worker; `onerror` and `{ ok: false }` resolve with a beginner-readable error; a constructor that throws falls back to `runC` (output of a small printf program matches). Change both failure messages to "The visualizer could not run this program (<detail>). Try again, or use Download to save your code." and assert no result starts with "Internal error". Done when lint/typecheck/test/build pass.
+
 ## Run log
 
 ### 2026-10-01 — planner run (improvement proposals)
@@ -206,3 +209,15 @@
 - Did: `@playwright/test` dev dependency, `playwright.config.ts` (uses the installed Chrome via `channel: "chrome"`, so no browser download; builds and serves the production app on port 3123), `e2e/smoke.spec.ts` (run + step with button and arrow key + output, share link with step, endless loop leaves the page usable), `npm run e2e`, separate `e2e` CI job, Vitest excludes `e2e/`, `.gitignore` for Playwright output.
 - Results: `npm run e2e` 3/3, `npm test` 198/198, lint 0 warnings, typecheck clean. Not pushed. The CI e2e job is untested (relies on Chrome being preinstalled on ubuntu runners). The 8s timeout path is still unexercised: the endless-loop program hits the 4M-tick cap first.
 - Next: backlog is empty; the planner decides what, if anything, comes next.
+
+### 2026-10-04 — planner run 10 (improvement proposals)
+- Surveyed: full status file, `git log` (16 commits, HEAD 60578d4 on `autopilot/cleanup-and-ai-validate`, tree clean), package.json, tracked file tree, `playwright.config.ts`, `.github/workflows/ci.yml`, `e2e/smoke.spec.ts`, `lib/c/runAsync.ts`, tick/step caps in `lib/c/interp.ts`, the test list. No TODO/FIXME/XXX markers in `app/`, `lib/`, `components/`, `tests/` or `e2e/`.
+- Backlog was empty; added one task.
+- Added "Unit-test `runCAsync` + drop 'Internal error' from worker failures": autopilot runs 9 and 11 both said the 8s timeout path is unverified, and no test covers `runAsync.ts` at all. A stubbed Worker with fake timers tests it in milliseconds, with no browser needed. The worker failure messages also break the project's own "never 'Internal error'" rule for beginners.
+- Deliberately not added: verifying the CI e2e job (it can only be confirmed by a real CI run on a PR to `main`, which is a push decision for the user, not a code task); making the e2e loop test assert the timeout banner (the program hits the 4M-tick cap first, and the unit test above covers the timeout more reliably); "continue past 4000 steps", cancelling runs on edit, and Open Graph metadata (same reasons as planner run 9); the long-standing deferrals from planner runs 2-9 (more builtins, compound literals/`goto`, CSP headers, MemoryView screen-reader work, `.archify/` cleanup, splitting `lib/c/interp.ts`). Nothing else rose above padding. The project is in a mature, well-tested state.
+
+### 2026-10-04 — autopilot run 12
+- Picked up: unit tests for `runCAsync` + friendlier worker-failure message.
+- Did: `tests/runAsync.test.ts` (fake Worker + fake timers: normal result, 8s timeout path now exercised, worker error, main-thread fallback); worker failures now read "The visualizer could not run this program (<detail>). Try again, or use Download to save your code." instead of "Internal error".
+- Results: `npm test` 202/202, lint 0 warnings, typecheck clean, build succeeds. Not pushed.
+- Next: backlog is empty again.

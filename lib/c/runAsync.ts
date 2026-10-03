@@ -3,6 +3,8 @@ import type { RunResult } from "./types";
 export const RUN_TIMEOUT_MS = 8000;
 export const TIMEOUT_MESSAGE = "Your program took too long to trace. Is there an infinite loop?";
 
+const workerFailure = (detail: string) => `The visualizer could not run this program (${detail}). Try again, or use Download to save your code.`;
+
 function failed(msg: string): RunResult {
   return { steps: [], error: msg, errorLine: null, warnings: [], truncated: false, inputNeededAt: null };
 }
@@ -25,8 +27,8 @@ export function runCAsync(source: string, stdin = "", eof = false, timeoutMs = R
     };
     const timer = setTimeout(() => done(failed(TIMEOUT_MESSAGE)), timeoutMs);
     worker.onmessage = (e: MessageEvent<{ ok: boolean; result?: RunResult; error?: string }>) =>
-      done(e.data.ok && e.data.result ? e.data.result : failed(`Internal error: ${e.data.error ?? "unknown"}`));
-    worker.onerror = (e) => done(failed(`Internal error: ${e.message}`));
+      done(e.data.ok && e.data.result ? e.data.result : failed(workerFailure(e.data.error ?? "unknown")));
+    worker.onerror = (e) => done(failed(workerFailure(e.message)));
     worker.postMessage({ source, stdin, eof });
   });
 }
