@@ -20,13 +20,13 @@ export async function POST(req: Request) {
   const before = typeof body.before === "string" ? body.before : "";
   const after = typeof body.after === "string" ? body.after : "";
   if (!prompt) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
-  if (prompt.length > 500 || before.length > 6000 || after.length > 3000) {
+  if (prompt.length > 500 || before.length + after.length > 9000) {
     return NextResponse.json({ error: "Code too long" }, { status: 413 });
   }
   try {
-    const code = await generateCode(prompt, before, after, req.signal);
+    const { code, warning } = await generateCode(prompt, before, after, req.signal);
     if (!code) return NextResponse.json({ error: "The AI did not return any code, try rephrasing" }, { status: 422 });
-    return NextResponse.json({ code });
+    return NextResponse.json({ code, warning });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Generation failed" }, { status: 502 });
   }

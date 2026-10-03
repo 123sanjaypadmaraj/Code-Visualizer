@@ -1,4 +1,4 @@
-/** Small, fast LLM calls (inline autocomplete, one-line fixes). Separate from the trace-analysis calls in llm.ts. */
+/** Small, fast LLM calls (inline autocomplete, one-line fixes). */
 
 const GROQ_COMPLETE_MODEL = process.env.GROQ_COMPLETE_MODEL || "qwen/qwen3.8-27b";
 const GEMINI_COMPLETE_MODEL = process.env.GEMINI_COMPLETE_MODEL || "gemini-2.5-flash";

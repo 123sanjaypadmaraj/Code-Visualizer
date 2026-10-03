@@ -174,7 +174,7 @@ export interface AiOptions {
   onStatus?: (s: AiStatus) => void;
   onError?: (e: unknown) => void;
   /** "/ai <request>" + Enter: write code from a plain-English request (before/after = code around the line) */
-  generate?: (prompt: string, before: string, after: string, signal: AbortSignal) => Promise<string>;
+  generate?: (prompt: string, before: string, after: string, signal: AbortSignal) => Promise<{ code: string; warning?: string }>;
   /** show a short message to the user (progress / errors of "/ai") */
   onNotice?: (msg: string) => void;
   delayMs?: number;
@@ -283,34 +283,29 @@ export function aiPrompt(opts: () => AiOptions | undefined): Extension {
           const line = view.state.doc.lineAt(sel.head);
           const m = sel.empty && sel.head === line.to ? AI_LINE.exec(line.text) : null;
           if (!m) return false;
-          const [, indent, request] = m;
+          const request = m[2];
           const original = line.text;
           const doc = view.state.doc;
-          const before = doc.sliceString(Math.max(0, line.from - 4000), line.from);
-          const after = doc.sliceString(line.to + 1, Math.min(doc.length, line.to + 2000));
+          // the whole program is context (minus the /ai line itself); the reply replaces all of it
+          const before = doc.sliceString(0, line.from);
+          const after = doc.sliceString(line.to + 1, doc.length);
           busy = true;
-          o.onNotice?.("AI is writing code… (Esc to cancel)");
+          o.onNotice?.("AI is writing a new program… (Esc to cancel)");
           const ctrl = new AbortController();
           const cancel = (e: KeyboardEvent) => {
             if (e.key === "Escape") ctrl.abort();
           };
           document.addEventListener("keydown", cancel);
           o.generate(request, before, after, ctrl.signal)
-            .then((code) => {
-              // the user may have edited while waiting: find the "/ai" line again
-              const cur = view.state.doc.toString();
-              const at = cur.indexOf(original);
-              if (at < 0) return o.onNotice?.("AI finished, but the /ai line was changed, so nothing was inserted");
-              const body = code
-                .split("\n")
-                .map((l, i) => (i === 0 || !l ? l : indent + l))
-                .join("\n");
+            .then(({ code, warning }) => {
+              // the user may have edited while waiting: make sure the "/ai" line is still there
+              if (view.state.doc.toString().indexOf(original) < 0) return o.onNotice?.("AI finished, but the /ai line was changed, so nothing was replaced");
               view.dispatch({
-                changes: { from: at, to: at + original.length, insert: indent + body },
-                selection: { anchor: at + indent.length + body.length },
+                changes: { from: 0, to: view.state.doc.length, insert: code },
+                selection: { anchor: code.length },
                 userEvent: "input.complete",
               });
-              o.onNotice?.("AI wrote this code. Undo (Ctrl+Z) if it is not what you wanted.");
+              o.onNotice?.(warning ? `${warning}. Undo (Ctrl+Z) to get your code back.` : "AI replaced your code with a new program. Undo (Ctrl+Z) if it is not what you wanted.");
             })
             .catch((e) => {
               o.onNotice?.(ctrl.signal.aborted ? "Cancelled" : e instanceof Error && e.message ? `AI could not write code: ${e.message}` : "AI could not write code");

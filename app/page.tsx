@@ -148,7 +148,7 @@ export default function Home() {
         });
         const body = await res.json().catch(() => null);
         if (!res.ok) throw new Error(aiFailureReason(res.status, typeof body?.error === "string" ? body.error : ""));
-        return typeof body?.code === "string" ? body.code : "";
+        return { code: typeof body?.code === "string" ? body.code : "", warning: typeof body?.warning === "string" ? body.warning : undefined };
       },
       fetchCompletion: async (prefix, suffix, signal) => {
         const res = await fetch("/api/complete", {
@@ -324,13 +324,13 @@ export default function Home() {
   };
 
   const errorLine = compileErr ? compileErr.line : step?.kind === "error" ? step.line : null;
-  const bar = "flex h-10 items-center gap-2 rounded border border-white/15 bg-[#23262f] px-3 text-sm text-white/90 hover:bg-[#2c303b]";
+  const bar = "flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-sm text-white/90 backdrop-blur transition hover:border-violet-400/40 hover:bg-white/[0.1]";
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#1f1f20] lg:h-screen">
-      <header className="flex h-[58px] items-center gap-3 border-b border-white/10 bg-[#2e2f35] px-7">
-        <span className="font-mono text-lg font-black text-cyan-300">C</span>
-        <h1 className="text-sm font-semibold tracking-tight text-white">C Code Visualizer</h1>
+    <div className="app-bg flex min-h-screen flex-col lg:h-screen">
+      <header className="glass-bar flex h-[58px] items-center gap-3 border-b border-white/10 px-7">
+        <span className="logo-chip grid h-8 w-8 place-items-center rounded-lg font-mono text-base font-black text-white">C</span>
+        <h1 className="gradient-text text-base font-bold tracking-tight">C Code Visualizer</h1>
         <span
           className={`ml-3 flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
             errorCount ? "border-red-400/50 bg-red-500/10 text-red-200" : warnCount ? "border-amber-400/40 bg-amber-400/10 text-amber-200" : "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
@@ -343,7 +343,7 @@ export default function Home() {
         {problems[0] && <span className="hidden max-w-md truncate text-xs text-white/50 lg:inline">Line {problems[0].line}: {problems[0].message}</span>}
       </header>
 
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-white/10 bg-[#27282c] px-6 py-2.5">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 glass-bar border-b border-white/10 px-6 py-2.5">
         <div className="flex items-center gap-2">
           <span className="rounded border border-white/15 bg-[#23262f] px-2.5 py-2 font-mono text-xs font-bold text-white">C</span>
           <span className="text-white/40">/</span>
@@ -369,7 +369,7 @@ export default function Home() {
             Share
           </button>
           <button
-            className={`${bar} lift hidden md:flex whitespace-nowrap ${aiOn ? "!border-cyan-400/50" : ""}`}
+            className={`${bar} lift hidden md:flex whitespace-nowrap ${aiOn ? "ai-glow" : ""}`}
             onClick={toggleAi}
             aria-pressed={aiOn}
             title={aiOn && aiStatus === "error" && aiReason ? `AI autocomplete failed: ${aiReason}` : "AI autocomplete: pause typing to get a suggestion, Tab accepts, Esc dismisses. Type /ai <request> and press Enter to generate code."}
@@ -388,9 +388,9 @@ export default function Home() {
           {mode === "edit" ? (
             <button
               onClick={start}
-              className="flex h-10 items-stretch overflow-hidden rounded border border-white/15 bg-[#23262f] text-sm font-medium text-white hover:bg-[#2c303b]"
+              className="btn-primary pulse-glow flex h-10 items-stretch overflow-hidden rounded-xl text-sm font-semibold text-white transition hover:brightness-110"
             >
-              <span className="grid w-10 place-items-center bg-cyan-400 text-[#10151c]" aria-hidden>
+              <span className="grid w-10 place-items-center bg-black/25" aria-hidden>
                 ▶
               </span>
               <span className="grid place-items-center px-6">Start Visualizer</span>
@@ -404,7 +404,7 @@ export default function Home() {
           {mode === "run" && (
             <button
               onClick={reset}
-              className="flex h-10 items-center gap-2 rounded border border-red-400/40 bg-[#2a2024] px-4 text-sm font-medium text-red-300 hover:bg-[#35252a]"
+              className="flex h-10 items-center gap-2 rounded-xl border border-red-400/40 bg-red-500/10 px-4 text-sm font-medium text-red-300 transition hover:bg-red-500/20"
             >
               <span aria-hidden>⊘</span> Reset
             </button>
@@ -415,7 +415,7 @@ export default function Home() {
       {mode === "run" && total > 1 && <Scrubber steps={steps} idx={idx} setIdx={(i) => { setPlaying(false); setStepIdx(i); }} />}
 
       <main className="grid min-h-0 flex-1 lg:grid-cols-2">
-        <section className="min-h-[340px] min-w-0 border-r border-white/10 bg-[#1d202a]">
+        <section className="min-h-[340px] min-w-0 border-r border-white/10 bg-black/30 backdrop-blur">
           <CodeEditor value={code} onChange={setCode} activeLine={mode === "run" && step ? step.line : null} errorLine={errorLine}
             readOnly={mode === "run"}
             hits={mode === "run" && showHeat && stats ? stats.hits : null}
@@ -425,7 +425,7 @@ export default function Home() {
           />
         </section>
 
-        <section className="flex min-h-0 min-w-0 flex-col gap-4 overflow-auto bg-[#1f1f20] p-4">
+        <section className="flex min-h-0 min-w-0 flex-col gap-4 overflow-auto bg-transparent p-4">
           {compileErr && (
             <div className="rounded border border-red-400/40 bg-red-500/10 px-4 py-3 font-mono text-sm text-red-100" role="alert">
               <b>Compile error{compileErr.line ? ` (line ${compileErr.line})` : ""}:</b> {compileErr.msg}
@@ -434,7 +434,7 @@ export default function Home() {
           {mode === "run" && step ? (
             <>
               <Console output={shownOutput} prevOutput={prevOutput} awaitingInput={awaitingInput} onSubmit={submitInput} onEof={closeInput} />
-              <div className="shrink-0 rounded border border-white/10 bg-[#1f1f20]">
+              <div className="glass shrink-0 rounded-2xl">
                 <MemoryView step={step} stepKey={idx} prevStep={idx > 0 ? steps[idx - 1] : undefined} />
               </div>
               <Explain step={step} warnings={run?.warnings ?? []} truncated={run?.truncated ?? false} />
@@ -458,13 +458,13 @@ export default function Home() {
             <>
               {!compileErr && (
                 <div className="fade-in m-auto flex max-w-sm flex-col items-center gap-3 py-6 text-center">
-                  <div className="float-y grid h-14 w-14 place-items-center rounded-2xl bg-cyan-400/15 font-mono text-2xl font-black text-cyan-300">C</div>
+                  <div className="float-y grid h-14 w-14 place-items-center logo-chip rounded-2xl font-mono text-2xl font-black text-white">C</div>
                   <p className="text-sm text-white/55">
                     Press <b className="text-white">Start Visualizer</b> to watch your code run step by step.
                   </p>
                   <div className="flex flex-wrap justify-center gap-2">
                     {["Recursion", "Linked list", "Bubble sort"].map((n) => (
-                      <button key={n} onClick={() => load(n)} className="lift rounded-full border border-white/15 bg-[#23262f] px-3 py-1 text-xs text-white/80 hover:border-cyan-400/50">
+                      <button key={n} onClick={() => load(n)} className="lift rounded-full border border-white/15 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:border-violet-400/60">
                         {n}
                       </button>
                     ))}
@@ -472,7 +472,7 @@ export default function Home() {
                       More examples →
                     </button>
                   </div>
-                  <p className="text-[11px] text-white/35">Tip: start typing and pause. AI autocomplete suggests the next lines; press Tab to accept.</p>
+                  <p className="text-[11px] text-white/35">Tip: pause typing for AI suggestions (Tab to accept). Type &quot;/ai your request&quot; + Enter to replace everything with AI-written code.</p>
                 </div>
               )}
               <StudyPanel lesson={lesson} steps={[]} idx={0} setIdx={() => {}} running={false} lineText={lineText} stats={null} showHeat={showHeat} setShowHeat={setShowHeat} warnings={[]} />
@@ -484,7 +484,7 @@ export default function Home() {
       <ExampleGallery open={galleryOpen} onClose={() => setGalleryOpen(false)} onPick={load} />
 
       {toast && (
-        <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-full border border-white/15 bg-[#10162b]/95 px-4 py-2 text-sm shadow-xl">
+        <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 glass rounded-full px-4 py-2 text-sm shadow-2xl shadow-violet-500/20 backdrop-blur-xl">
           {toast}
         </div>
       )}
