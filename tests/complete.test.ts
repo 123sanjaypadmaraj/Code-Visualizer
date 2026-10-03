@@ -12,6 +12,9 @@ describe("cleanCompletion", () => {
     expect(cleanCompletion("    int total = 0;", "int main() {\n    int total = ")).toBe("0;");
     expect(cleanCompletion("for (int i = 0; i < n; i++) {", "for (")).toBe("int i = 0; i < n; i++) {");
   });
+  it("removes a re-typed line even when its indentation differs", () => {
+    expect(cleanCompletion('printf("x", x);', 'int main() {\n    printf("x", ')).toBe("x);");
+  });
   it("caps lines and length", () => {
     const many = Array.from({ length: 20 }, (_, i) => `x${i};`).join("\n");
     expect(cleanCompletion(many).split("\n")).toHaveLength(8);

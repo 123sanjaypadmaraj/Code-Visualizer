@@ -1,6 +1,6 @@
 /** Small, fast LLM calls (inline autocomplete, one-line fixes). Separate from the trace-analysis calls in llm.ts. */
 
-const GROQ_COMPLETE_MODEL = process.env.GROQ_COMPLETE_MODEL || "llama-3.1-8b-instant";
+const GROQ_COMPLETE_MODEL = process.env.GROQ_COMPLETE_MODEL || "qwen/qwen3.8-27b";
 const GEMINI_COMPLETE_MODEL = process.env.GEMINI_COMPLETE_MODEL || "gemini-2.5-flash";
 
 export const COMPLETE_SYSTEM = `You are the autocomplete engine inside a C learning tool used by college students.
@@ -27,7 +27,8 @@ export function cleanCompletion(raw: string, prefix = "", suffix = ""): string {
   t = t.replace(/^<<<\n?|\n?>>>$/g, "");
   // the model sometimes re-types the line the user is already on
   const lastLine = prefix.slice(prefix.lastIndexOf("\n") + 1);
-  if (lastLine.trim() && t.startsWith(lastLine)) t = t.slice(lastLine.length);
+  const typed = lastLine.trimStart();
+  if (typed && t.trimStart().startsWith(typed)) t = t.trimStart().slice(typed.length);
   t = t.split("\n").slice(0, MAX_LINES).join("\n").slice(0, MAX_CHARS);
   t = t.replace(/\s+$/, "");
   if (!t.trim()) return "";
