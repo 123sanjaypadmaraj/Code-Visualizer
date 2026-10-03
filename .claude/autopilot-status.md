@@ -47,7 +47,7 @@
 - [x] **Add "Open .c file" and "Download .c" to the editor header** — status: done
   Students write C in files and currently must copy/paste. Add two header buttons in `app/page.tsx`: "Open" uses a hidden `<input type="file" accept=".c,.h,.txt">` and loads the file text into the editor (reject files over 20000 chars with a toast "File too large for the visualizer (max 20000 characters)") then runs it once like a share link does; "Download" saves the current editor text as `program.c` via a Blob + object URL (revoke it afterwards). Both buttons need `aria-label`s and must not overwrite code if the file read fails; lint/typecheck/test/build pass.
 
-- [ ] **Add a gcc differential test that checks interpreter output against real C** — status: pending
+- [x] **Add a gcc differential test that checks interpreter output against real C** — status: done
   `tests/examples.test.ts` only pins hand-written expected output for 8 examples, so a wrong result from `lib/c/interp.ts` (integer wrap, printf formatting, operator precedence) goes unnoticed. Add `tests/gcc-diff.test.ts` that is skipped via `describe.skipIf` when `gcc --version` fails (use `child_process.spawnSync`, write sources/binaries to `os.tmpdir()`), and otherwise, for every non-`bug` example in `lib/examples.ts` plus 6-10 new small programs in `tests/c-programs/*.c` (each targeting printf width/precision/`%x`/`%c`, signed/unsigned overflow and casts, integer division/modulo with negatives, short-circuit and comma/ternary, struct copy, pointer arithmetic over arrays), compiles with `gcc -std=c11 -w -lm`, runs with the example's `stdin`, and asserts the interpreter's final-step `output` equals gcc's stdout. If a mismatch is a real interpreter bug, fix it in `lib/c/interp.ts`; if it is undefined behaviour, change the test program instead. CI's ubuntu runner already ships gcc, so no workflow change is needed; done when lint/typecheck/test/build pass.
 
 - [x] **Add a robustness test that half-typed programs never crash the interpreter** — status: done
@@ -143,3 +143,14 @@
 - Did: `lib/apiGuard.ts` (`clientIp`, `limitFromEnv`), `lib/log.ts` (`logAiRequest`, no code/prompt/IP), all three AI routes use them and log once per request; fix/generate limits via `FIX_RATE_LIMIT_PER_MIN`/`GENERATE_RATE_LIMIT_PER_MIN`; `tests/routes.test.ts` covers 400/413/200/502/429/422; added `vitest.config.ts` for the `@/` alias. Skipped the optional `onProvider` callback.
 - Results: `npm test` 167/167, lint 0 warnings, typecheck clean, build succeeds. Not pushed.
 - Next: Web Worker, gcc differential test, share link with step.
+
+### 2026-10-04 — planner run 5 (improvement proposals)
+- Surveyed: full status file, `git log` (11 commits, HEAD 1df58f7 on `autopilot/cleanup-and-ai-validate`, tree clean), package.json, tracked file tree and line counts, the step cap and truncation notice (`MAX_STEPS` in `lib/c/interp.ts`, `components/StepPlayer.tsx`), `app/layout.tsx` metadata. No TODO/FIXME/XXX markers in `app/`, `lib/`, `components/` or `tests/`.
+- Added nothing. Three pending tasks remain untouched (Web Worker, gcc differential test, share link with step) and they still cover the main open gaps: UI responsiveness on long runs, interpreter correctness, and help-seeking. All earlier gaps (tests, CI build, lint, logging, error boundaries, rate limits, route tests) are done, and nothing new surveyed rose above padding.
+- Deliberately not added: "continue past 4000 steps" (still blocked on the Web Worker task); the skipped optional `onProvider` callback for AI logs (low value; logs already record route/status/latency/error); auto-running files loaded via "Open" (autopilot run 4 chose not to, a reasonable product call); Playwright end-to-end tests, CSP headers, MemoryView screen-reader work and `.archify/` cleanup (same reasons as planner runs 2-4).
+
+### 2026-10-04 — autopilot run 7
+- Picked up: gcc differential test (planner run 5 added nothing).
+- Did: `tests/gcc-diff.test.ts` (skips when gcc is missing) compares interpreter output to gcc for every non-bug example plus 6 new programs in `tests/c-programs/`; all matched, so no interpreter fix was needed. Renamed `vitest.config.ts` to `.mts` to silence the ESM warning.
+- Results: `npm test` 193/193, lint 0 warnings, typecheck clean, build succeeds. Not pushed.
+- Next: Web Worker, share link with step.
