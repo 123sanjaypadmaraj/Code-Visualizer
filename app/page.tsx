@@ -4,6 +4,7 @@ import ExampleGallery from "@/components/ExampleGallery";
 import Scrubber from "@/components/Scrubber";
 import StudyPanel from "@/components/StudyPanel";
 import { aiFailureReason } from "@/lib/aiReason";
+import { buildShareHash, parseShareHash } from "@/lib/share";
 import type { AiOptions, AiStatus } from "@/components/editorExtras";
 import { LESSONS } from "@/lib/lessons";
 import { computeStats } from "@/lib/learn";
@@ -20,22 +21,6 @@ import type { RunResult } from "@/lib/c/types";
 
 const STORAGE_KEY = "c-visualizer:code";
 const AI_KEY = "c-visualizer:ai-complete";
-
-function encodeShare(code: string) {
-  const bytes = new TextEncoder().encode(code);
-  let bin = "";
-  bytes.forEach((b) => (bin += String.fromCharCode(b)));
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function decodeShare(b64: string): string | null {
-  try {
-    const bin = atob(b64.replace(/-/g, "+").replace(/_/g, "/"));
-    return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
-  } catch {
-    return null;
-  }
-}
 
 interface Typed {
   /** step index (in the run) at which the program was waiting */
@@ -83,9 +68,8 @@ export default function Home() {
 
   // Restore from a share link (priority) or localStorage, once on mount.
   useEffect(() => {
-    let fromHash: string | null = null;
-    const m = window.location.hash.match(/^#code=(.+)$/);
-    if (m) fromHash = decodeShare(m[1]);
+    const shared = parseShareHash(window.location.hash);
+    const fromHash = shared?.code ?? null;
     let saved: string | null = null;
     try {
       saved = localStorage.getItem(STORAGE_KEY);
@@ -95,6 +79,16 @@ export default function Home() {
       // localStorage/hash only exist in the browser, so restoring must happen after mount.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCode(initial);
+    }
+    // a link that points at a step opens the trace there
+    if (shared && shared.step !== null) {
+      const r = runC(shared.code, "", false);
+      if (r.steps.length) {
+        const visible = r.inputNeededAt === null ? r.steps.length : r.inputNeededAt + 1;
+        setRun(r);
+        setStepIdx(Math.min(shared.step, visible - 1));
+        setMode("run");
+      }
     }
     try {
       const pref = localStorage.getItem(AI_KEY);
@@ -315,12 +309,13 @@ export default function Home() {
   };
 
   const share = async () => {
-    const url = `${window.location.origin}${window.location.pathname}#code=${encodeShare(code)}`;
+    const hash = buildShareHash(code, mode === "run" ? stepIdx : null);
+    const url = `${window.location.origin}${window.location.pathname}${hash}`;
     try {
       await navigator.clipboard.writeText(url);
       flash("Link copied to clipboard");
     } catch {
-      window.location.hash = `code=${encodeShare(code)}`;
+      window.location.hash = hash;
       flash("Link is in the address bar");
     }
   };

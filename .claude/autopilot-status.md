@@ -56,8 +56,11 @@
 - [x] **Add an app-level error boundary so a render crash does not blank the page** — status: done
   There is no `app/error.tsx` or `app/global-error.tsx`, so an exception while rendering `MemoryView`/`ValueView`/`StudyPanel` for an unusual snapshot shows an empty screen and the student's code is only recoverable via localStorage. Following the Next 16 docs in `node_modules/next/dist/docs/` for the error-file conventions, add `app/error.tsx` (client component) that shows "Something went wrong drawing this step", the error message, a "Try again" button calling the boundary's retry/reset function, and a "Download my code" button that saves the localStorage editor contents (same key as `app/page.tsx`) as `program.c`; also wrap the memory view panel in `app/page.tsx` in a small local React error boundary component so a bad step only replaces that panel with a message while the editor and player stay usable. Done when lint/typecheck/test/build pass and a deliberately thrown error (tested manually, then removed) shows the fallback.
 
-- [ ] **Include the current step in share links** — status: pending
+- [x] **Include the current step in share links** — status: done
   Share links (`#code=` in `app/page.tsx`) always start at step 0, so a student asking for help cannot point at the moment something goes wrong. Make the Share button produce `#code=<b64>&step=<idx>` when a trace is loaded (omit `&step` otherwise), and on load parse both parts (old `#code=`-only links must still work), run the program once as now, then jump to `step` clamped to `[0, steps.length-1]`. Move the hash building/parsing into pure `buildShareHash(code, step?)` / `parseShareHash(hash)` helpers in a new `lib/share.ts` (move `encodeShare`/`decodeShare` there from `app/page.tsx` too) with Vitest cases for round-trip, legacy links, invalid/negative/non-numeric step and malformed base64; lint/typecheck/test/build pass.
+
+- [ ] **Add a Playwright browser smoke test and CI job** — status: pending
+  Nothing tests the page wiring (Start, step player, console, share hash, Open/Download, error boundary): Vitest covers only `lib/` and routes. Add `@playwright/test` as a dev dependency, `playwright.config.ts` (Chromium only, `webServer` runs `npm run build && npm run start` on port 3000), an `npm run e2e` script, and `e2e/smoke.spec.ts` that uses roles/aria-labels (no CSS-class selectors) to: load `/`, press Start on the starter program, step forward with the Next button and the Right arrow key and assert the step counter changes, assert the console shows the starter's expected output at the last step, and load `/#code=<base64url of a small printf program>` and assert that program's output appears. No AI keys are needed or set (do not exercise `/ai`, ghost text or Fix with AI). Add a separate `e2e` job in `.github/workflows/ci.yml` (`npm ci`, `npx playwright install --with-deps chromium`, `npm run e2e`) and exclude `e2e/` from Vitest's include pattern in `vitest.config.mts`; if the Web Worker task has landed, also assert a `while(1){}` program shows the "took too long" banner. Done when `npm run e2e`, lint, typecheck, test and build pass locally.
 
 ## Run log
 
@@ -154,3 +157,15 @@
 - Did: `tests/gcc-diff.test.ts` (skips when gcc is missing) compares interpreter output to gcc for every non-bug example plus 6 new programs in `tests/c-programs/`; all matched, so no interpreter fix was needed. Renamed `vitest.config.ts` to `.mts` to silence the ESM warning.
 - Results: `npm test` 193/193, lint 0 warnings, typecheck clean, build succeeds. Not pushed.
 - Next: Web Worker, share link with step.
+
+### 2026-10-04 — planner run 6 (improvement proposals)
+- Surveyed: full status file, `git log` (12 commits, HEAD 690349d on `autopilot/cleanup-and-ai-validate`, tree clean), package.json, tracked file tree and line counts, unsupported-syntax errors in `lib/c/parser.ts` (only compound literals and `goto`), the `BUILTINS` table and unknown-function error in `lib/c/interp.ts`, `app/layout.tsx` metadata. No TODO/FIXME/XXX markers in `app/`, `lib/`, `components/` or `tests/`.
+- Two pending tasks remain (Web Worker, share link with step); added one that does not overlap them.
+- Added "Playwright browser smoke test + CI job": the earlier deferral was "revisit after the route tests land", and they have now landed. All UI wiring (Start, player, console, share hash) is still untested, and an end-to-end check is the only practical way to confirm the Web Worker change keeps the page responsive.
+- Deliberately not added: more library builtins (the `BUILTINS` table already covers stdio/string/stdlib/math/ctype/qsort, enough for beginner programs); compound literals/`goto` (rare for beginners, same as earlier runs); "continue past 4000 steps" (still waiting on the Web Worker task); compressing share URLs (no evidence that beginner-sized programs hit URL length limits); CSP headers, MemoryView screen-reader work and `.archify/` cleanup (same reasons as planner runs 2-5).
+
+### 2026-10-04 — autopilot run 8
+- Picked up: share link with step (new Playwright task left pending: it needs browser downloads and a CI job, better as its own session).
+- Did: `lib/share.ts` (`buildShareHash`/`parseShareHash`, encode/decode moved out of `page.tsx`) + `tests/share.test.ts`; Share adds `&step=N` while a trace is open; a link with a step runs the program once and opens that step (clamped); code-only links still just load the code, as before.
+- Results: `npm test` 198/198, lint 0 warnings, typecheck clean, build succeeds. Not pushed.
+- Next: Web Worker, Playwright smoke test.
