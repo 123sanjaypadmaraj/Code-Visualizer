@@ -17,7 +17,6 @@ import MemoryView from "@/components/MemoryView";
 import PanelBoundary from "@/components/PanelBoundary";
 import { Controls, Explain } from "@/components/StepPlayer";
 import { EXAMPLES, STARTER } from "@/lib/examples";
-import { runC } from "@/lib/c/interp";
 import type { RunResult } from "@/lib/c/types";
 
 const STORAGE_KEY = "c-visualizer:code";
@@ -67,6 +66,19 @@ export default function Home() {
   const stdin = typed.map((t) => `${t.text}
 `).join("");
 
+  const runToken = useRef(0);
+  const [busy, setBusy] = useState(false);
+
+  /** Run in a worker; a newer call (or Reset) makes older results get dropped. */
+  const execute = async (src: string, input: string, closed: boolean) => {
+    const token = ++runToken.current;
+    setBusy(true);
+    const r = await runCAsync(src, input, closed);
+    if (token !== runToken.current) return null;
+    setBusy(false);
+    return r;
+  };
+
   // Restore from a share link (priority) or localStorage, once on mount.
   useEffect(() => {
     const shared = parseShareHash(window.location.hash);
@@ -83,13 +95,15 @@ export default function Home() {
     }
     // a link that points at a step opens the trace there
     if (shared && shared.step !== null) {
-      const r = runC(shared.code, "", false);
-      if (r.steps.length) {
+      const step = shared.step;
+      void execute(shared.code, "", false).then((r) => {
+        if (!r) return;
+        if (!r.steps.length) return setCompileErr({ line: r.errorLine, msg: r.error ?? "Could not compile." });
         const visible = r.inputNeededAt === null ? r.steps.length : r.inputNeededAt + 1;
         setRun(r);
-        setStepIdx(Math.min(shared.step, visible - 1));
+        setStepIdx(Math.min(step, visible - 1));
         setMode("run");
-      }
+      });
     }
     try {
       const pref = localStorage.getItem(AI_KEY);
@@ -206,19 +220,6 @@ export default function Home() {
       setPlaying(false);
       setStepIdx(any);
     }
-  };
-
-  const runToken = useRef(0);
-  const [busy, setBusy] = useState(false);
-
-  /** Run in a worker; a newer call (or Reset) makes older results get dropped. */
-  const execute = async (src: string, input: string, closed: boolean) => {
-    const token = ++runToken.current;
-    setBusy(true);
-    const r = await runCAsync(src, input, closed);
-    if (token !== runToken.current) return null;
-    setBusy(false);
-    return r;
   };
 
   const start = async () => {

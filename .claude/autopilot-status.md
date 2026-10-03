@@ -62,6 +62,9 @@
 - [ ] **Add a Playwright browser smoke test and CI job** — status: pending
   Nothing tests the page wiring (Start, step player, console, share hash, Open/Download, error boundary): Vitest covers only `lib/` and routes. Add `@playwright/test` as a dev dependency, `playwright.config.ts` (Chromium only, `webServer` runs `npm run build && npm run start` on port 3000), an `npm run e2e` script, and `e2e/smoke.spec.ts` that uses roles/aria-labels (no CSS-class selectors) to: load `/`, press Start on the starter program, step forward with the Next button and the Right arrow key and assert the step counter changes, assert the console shows the starter's expected output at the last step, and load `/#code=<base64url of a small printf program>` and assert that program's output appears. No AI keys are needed or set (do not exercise `/ai`, ghost text or Fix with AI). Add a separate `e2e` job in `.github/workflows/ci.yml` (`npm ci`, `npx playwright install --with-deps chromium`, `npm run e2e`) and exclude `e2e/` from Vitest's include pattern in `vitest.config.mts`; if the Web Worker task has landed, also assert a `while(1){}` program shows the "took too long" banner. Done when `npm run e2e`, lint, typecheck, test and build pass locally.
 
+- [x] **Route share-link-with-step restore through the Web Worker** — status: done
+  The mount effect in `app/page.tsx` (the `shared.step !== null` branch) still calls `runC` synchronously, so opening a `#code=...&step=N` link to a heavy or looping program freezes the page on load before anything renders, which is the very case the worker was added for. Replace it with `runCAsync` from `lib/c/runAsync.ts` (show the same "Running…" Start-button state and use the existing stale-result token so a Reset or edit during the run discards the result), keep the clamp to `[0, visible-1]`, and when the result has an `error` (including the 8s timeout message) show it in the existing compile-error banner instead of silently ignoring it; then remove the now-unused `runC` import if nothing else in the page uses it. Done when lint/typecheck/test/build pass and opening a share link with `&step=0` for `int main(){while(1){}}` leaves the editor usable and shows the timeout or step-cap result.
+
 ## Run log
 
 ### 2026-10-01 — planner run (improvement proposals)
@@ -180,3 +183,15 @@
 - Did: `lib/c/worker.ts` + `lib/c/runAsync.ts` (one worker per run, terminated after 8s with "Your program took too long to trace. Is there an infinite loop?", falls back to main-thread `runC` if Workers are unavailable); `app/page.tsx` start/submitInput/closeInput are async with a stale-result token, Reset cancels, Start button shows "Running…". `runC` is unchanged. The share-link-with-step restore on load still runs synchronously.
 - Results: `npm test` 198/198, lint 0 warnings, typecheck clean, build succeeds. Checked in a real browser on the production build: an infinite-loop program ran through the worker and produced a trace (the 4M-tick cap trips before 8s). Could not prove UI responsiveness because the automation tab was hidden/throttled; the 8s timeout path is untested.
 - Next: Playwright smoke test (would also cover the worker and timeout banner).
+
+### 2026-10-04 — planner run 8 (improvement proposals)
+- Surveyed: full status file, `git log` (14 commits, HEAD 7d1be6b on `autopilot/cleanup-and-ai-validate`, tree clean), package.json, tracked file tree, `lib/c/runAsync.ts`, and the run/restore wiring in `app/page.tsx`.
+- One pending task remains (Playwright smoke test + CI job); added one that does not overlap it.
+- Added "Route share-link-with-step restore through the Web Worker": autopilot run 9 noted the on-load restore still runs synchronously; confirmed `runC(shared.code, "", false)` in the mount effect, so a shared looping program freezes the page on load, and any run error from a shared link is silently dropped.
+- Deliberately not added: a separate test for the 8s timeout path (the pending Playwright task already asserts the "took too long" banner); "continue past 4000 steps" (now unblocked by the worker, but no evidence beginner programs hit the cap; revisit if users report it); the same long-standing deferrals as planner runs 2-7 (more builtins, compound literals/`goto`, CSP headers, MemoryView screen-reader work, `.archify/` cleanup, splitting `lib/c/interp.ts`).
+
+### 2026-10-04 — autopilot run 10
+- Picked up: route the share-link step restore through the worker.
+- Did: the on-load restore in `app/page.tsx` uses `execute`/`runCAsync` (Start shows "Running…", Reset discards the result, errors show in the banner); `runC` import removed from the page. Editing the code during the run does not cancel it (only Reset or a newer run does).
+- Results: `npm test` 198/198, lint 0 warnings, typecheck clean, build succeeds. Not pushed.
+- Next: Playwright smoke test.
