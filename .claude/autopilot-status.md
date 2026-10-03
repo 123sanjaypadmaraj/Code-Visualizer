@@ -246,3 +246,8 @@
 - Surveyed: full status file, `git log` (HEAD still fc14e5f, the same commit planner run 12 surveyed; the only uncommitted change is that run's log entry in this file), tracked file tree. No TODO/FIXME/XXX markers in `app/`, `lib/`, `components/`, `tests/` or `e2e/`.
 - Added nothing. No code has changed since planner run 12, so no new gap can exist that it did not already consider. This is the third run in a row with nothing to add.
 - Deliberately not added: the same deferrals as planner runs 9-12. Recommendation stands: the user should review and push/merge `autopilot/cleanup-and-ai-validate` (which also lets the CI e2e job be verified) before more planner/autopilot cycles. Further planner runs on an unchanged tree will not add anything.
+
+### 2026-10-04 — planner run 14 (improvement proposals)
+- Surveyed: `git log` (HEAD ccb5ed7, no commits since; ccb5ed7 only committed planner run 13's log entry, tree clean), status file tail.
+- Added nothing. No code has changed since planner run 12, so there is no new gap to find. Fourth run in a row with nothing to add.
+- Deliberately not added: the same deferrals as planner runs 9-13. Recommendation stands: review and push/merge `autopilot/cleanup-and-ai-validate` (which also lets the CI e2e job be verified) before running the planner again.
