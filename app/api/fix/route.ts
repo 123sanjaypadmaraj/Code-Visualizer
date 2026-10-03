@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { suggestFix } from "@/lib/fix";
+import { clientIp, limitFromEnv } from "@/lib/apiGuard";
+import { logAiRequest } from "@/lib/log";
 import { checkRateLimit } from "@/lib/rateLimit";
 
 export const maxDuration = 20;
 
 /** AI "fix this line" for a diagnostic the student clicked on. */
-export async function POST(req: Request) {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
-  if (!checkRateLimit(`fix:${ip}`, 20)) {
+async function handle(req: Request, fail: { error?: string }): Promise<Response> {
+  if (!checkRateLimit(`fix:${clientIp(req)}`, limitFromEnv("FIX_RATE_LIMIT_PER_MIN", 20))) {
     return NextResponse.json({ error: "Too many requests, wait a moment and try again" }, { status: 429 });
   }
   let body: { code?: unknown; line?: unknown; message?: unknown };
@@ -28,6 +29,15 @@ export async function POST(req: Request) {
     if (!fix) return NextResponse.json({ error: "The AI could not suggest a safe fix for this line" }, { status: 422 });
     return NextResponse.json(fix);
   } catch (e) {
+    fail.error = e instanceof Error ? e.message : "Fix failed";
     return NextResponse.json({ error: e instanceof Error ? e.message : "Fix failed" }, { status: 502 });
   }
+}
+
+export async function POST(req: Request) {
+  const t0 = Date.now();
+  const info: { error?: string } = {};
+  const res = await handle(req, info);
+  logAiRequest({ route: "fix", status: res.status, ms: Date.now() - t0, error: info.error });
+  return res;
 }
