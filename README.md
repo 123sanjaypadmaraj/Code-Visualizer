@@ -24,7 +24,7 @@ The visualizer works with no keys at all. Keys only enable the AI features; the 
 
 1. Push this folder to a GitHub repo.
 2. In Vercel: **Add New → Project →** import the repo (framework auto-detected as Next.js).
-3. Under **Environment Variables** add `GROQ_API_KEY` and `GEMINI_API_KEY`.
+3. Under **Environment Variables** add any AI keys you use (`GROQ_API_KEY`, `GEMINI_API_KEY`, `CEREBRAS_API_KEY`, `OPENROUTER_API_KEY`). None are required for the visualizer itself.
 4. Deploy. (Or: `npx vercel` then `npx vercel env add GROQ_API_KEY`.)
 
 API keys stay server-side in the `app/api/*` routes; they are never sent to the browser.
@@ -42,6 +42,16 @@ API keys stay server-side in the `app/api/*` routes; they are never sent to the 
 - **Live error checking** (like VS Code): syntax errors are underlined in red as you type (missing `;`, `)`, `"`, unclosed `{`, stray characters),
   with a status badge in the header. Hover the red marker for the message and a one-click fix (e.g. *Insert ';'*) or **✨ Fix with AI**, which rewrites the
   line and explains the mistake (`/api/fix`). Amber warnings catch a missing `#include` and `=` used instead of `==` in a condition.
+
+## Checks
+
+| Command | What it does |
+| --- | --- |
+| `npm run lint` | ESLint, zero warnings allowed |
+| `npm run typecheck` | TypeScript |
+| `npm test` | Vitest unit tests. The gcc comparison test is skipped when `gcc` is not installed |
+| `npm run build` | Production build |
+| `npm run e2e` | Playwright browser tests. Needs Google Chrome installed; builds and serves the app on port 3123 |
 
 ## AI features
 

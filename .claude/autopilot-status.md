@@ -68,6 +68,9 @@
 - [x] **Unit-test `runCAsync` (timeout, worker failure, fallback) and drop "Internal error" from worker failures** — status: done
   The 8s timeout in `lib/c/runAsync.ts` has never run in any test (the e2e loop hits the 4M-tick cap first), and its worker `onerror`/`ok:false` paths show "Internal error: ...", the exact wording `tests/robustness.test.ts` forbids for beginners. Add `tests/runAsync.test.ts` that stubs `globalThis.Worker` with a fake class (`vi.stubGlobal`) and uses `vi.useFakeTimers()` to cover: a posted `{ ok: true, result }` resolves to that result and calls `terminate()` once; no reply resolves after `RUN_TIMEOUT_MS` with `TIMEOUT_MESSAGE` and terminates the worker; `onerror` and `{ ok: false }` resolve with a beginner-readable error; a constructor that throws falls back to `runC` (output of a small printf program matches). Change both failure messages to "The visualizer could not run this program (<detail>). Try again, or use Download to save your code." and assert no result starts with "Internal error". Done when lint/typecheck/test/build pass.
 
+- [x] **Document the test/check scripts and all AI provider keys in the README** — status: done
+  `README.md` has no section on checks even though the project has five (`lint` with zero warnings, `typecheck`, `test`, `build`, `e2e`), and its quirks are only recorded in this status file: `tests/gcc-diff.test.ts` silently skips without `gcc`, and `npm run e2e` needs a local Google Chrome (`channel: "chrome"` in `playwright.config.ts`) and builds/serves on port 3123. Add a "Development & tests" section after "Run locally" that lists each script with a one-line purpose, matching what CI (`.github/workflows/ci.yml`) runs, and notes these two requirements. Also fix "Deploy to Vercel" step 3, which names only `GROQ_API_KEY`/`GEMINI_API_KEY` although the app also uses Cerebras and OpenRouter: list every key variable `.env.example` documents and say any one is enough. Docs-only change: verify each script name and port against `package.json`/`playwright.config.ts`, and do not change code.
+
 ## Run log
 
 ### 2026-10-01 — planner run (improvement proposals)
@@ -221,3 +224,15 @@
 - Did: `tests/runAsync.test.ts` (fake Worker + fake timers: normal result, 8s timeout path now exercised, worker error, main-thread fallback); worker failures now read "The visualizer could not run this program (<detail>). Try again, or use Download to save your code." instead of "Internal error".
 - Results: `npm test` 202/202, lint 0 warnings, typecheck clean, build succeeds. Not pushed.
 - Next: backlog is empty again.
+
+### 2026-10-04 — planner run 11 (improvement proposals)
+- Surveyed: full status file, `git log` (17 commits, HEAD 6705b13 on `autopilot/cleanup-and-ai-validate`, tree clean), package.json, tracked file tree, the stat of the last commit (only `runAsync.ts` + its test), README section headings and setup/deploy text. No TODO/FIXME/XXX markers in `app/`, `lib/`, `components/`, `tests/` or `e2e/`.
+- Backlog was empty; added one small task.
+- Added "Document test/check scripts and all AI provider keys in the README": the README never mentions lint/typecheck/test/e2e, the gcc-skip and local-Chrome requirements appear only in this run log, and the Vercel steps list two of the four provider keys. It is cheap and helps anyone who clones the repo.
+- Deliberately not added: no new feature or reliability gap was found. The last commit closed the only open gap (worker timeout coverage), and the core is already well tested (unit, robustness, gcc differential, route, e2e). Same deferrals as planner runs 9-10 ("continue past 4000 steps", cancelling runs on edit, Open Graph metadata, more builtins, compound literals/`goto`, CSP headers, MemoryView screen-reader work, `.archify/` cleanup, splitting `lib/c/interp.ts`). Verifying the CI e2e job still needs a real PR run, which the user has to decide on.
+
+### 2026-10-04 — autopilot run 13
+- Picked up: README docs for check scripts and all AI keys (docs only).
+- Did: added a "Checks" table (lint, typecheck, test incl. gcc skip, build, e2e needing Chrome, port 3123) and listed all four provider keys in the Vercel steps; verified against `package.json`, `playwright.config.ts`, `.env.example`.
+- Results: no code changed; last full run was 202/202 tests, lint/typecheck/build clean. Not pushed.
+- Next: backlog empty.
