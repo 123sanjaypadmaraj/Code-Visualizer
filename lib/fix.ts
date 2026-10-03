@@ -56,3 +56,17 @@ export async function suggestFix(code: string, line: number, message: string, si
   if (fix?.endLine && fix.replacement === lines.slice(line - 1, fix.endLine).join("\n")) return null;
   return fix;
 }
+
+/** The AI fix was computed for `expected`; only apply it if the student has not edited those lines meanwhile. */
+export function fixStillApplies(doc: string, line: number, endLine: number, expected: string[]): boolean {
+  const lines = doc.split("\n");
+  if (endLine > lines.length) return false;
+  const cur = lines.slice(line - 1, endLine);
+  return cur.length === expected.length && cur.every((l, i) => l === expected[i]);
+}
+
+/** Describe the result of an applied fix: did the error on that line go away? */
+export function fixOutcome(remaining: { severity: string; line: number }[], line: number, explanation: string): string {
+  const still = remaining.some((d) => d.severity === "error" && d.line === line);
+  return still ? `AI fix: ${explanation} (this line still has an error, try again or edit it by hand)` : `AI fix: ${explanation}`;
+}

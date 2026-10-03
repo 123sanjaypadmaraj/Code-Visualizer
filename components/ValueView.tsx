@@ -68,11 +68,6 @@ interface Move {
   to: number;
 }
 
-/** Which array slots just received a value that used to live in another slot. */
-function findMoves(items: ValView[], prev: ValView | undefined): Move[] {
-  return findChanges(items, prev).moves;
-}
-
 export interface Peer {
   addr: number;
   text: string;

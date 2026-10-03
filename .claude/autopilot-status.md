@@ -35,6 +35,18 @@
 - [ ] **Add route-handler tests and a shared rate-limit helper for the AI routes** — status: pending
   The `complete`, `fix` and `generate` routes each duplicate the `x-forwarded-for` parsing and hard-code limits (fix 20, generate 15) with no tests. Add `lib/apiGuard.ts` exporting `clientIp(req)` and `limitFromEnv(name, fallback)`, use it in all AI routes, and make the fix/generate limits overridable via `FIX_RATE_LIMIT_PER_MIN` / `GENERATE_RATE_LIMIT_PER_MIN` (documented in `.env.example`). Add `tests/routes.test.ts` that imports each route's `POST`, mocks the `lib/` call, and asserts 400 on invalid JSON, 413 on oversize input, 429 after the limit (call `resetRateLimit()` between tests), 422 on empty AI result (fix/generate), and 502 with the thrown message when the provider fails.
 
+- [x] **Make "Fix with AI" safe against stale edits, hangs and non-fixes** — status: done
+  In the "Fix with AI" action in `components/editorExtras.ts` (and `fetchFix` in `app/page.tsx`): pass an `AbortSignal` combining `AbortSignal.timeout(20000)` to `fetch("/api/fix")`; before dispatching, re-read the target line range and, if its text differs from what was sent, skip the change and notice "AI finished, but the line was edited, so nothing was changed"; after applying, run `diagnose()` on the new document and, if an error is still reported on that line, keep the change but notice "AI fix applied, but this line still has an error: <message>. Undo (Ctrl+Z) to revert." Extract the stale-check/verify decision into a pure helper in `lib/fix.ts` (e.g. `checkFixResult(before, after, line)`) with Vitest cases for unchanged line, edited line, and still-erroring result; lint/typecheck/test pass.
+
+- [x] **Run the production build in CI and make lint warning-free** — status: done
+  `.github/workflows/ci.yml` runs lint/typecheck/test but never `npm run build`, so Next-specific breakage (route config, client/server boundaries, the future Web Worker bundling) only shows up on deploy. Add a `npm run build` step after tests, fix the two existing lint warnings (unused `findMoves` in `components/ValueView.tsx`, the unused `eslint-disable` directive eslint reports), and change the `lint` script to `eslint --max-warnings=0`. Done when `npm run lint`, `typecheck`, `test` and `build` all pass locally with zero warnings.
+
+- [ ] **Add structured server logs for the AI routes** — status: pending
+  There is no server-side logging, so provider failures, timeouts and rate-limit hits on Vercel are invisible. Add `lib/log.ts` exporting `logAiRequest({ route, status, ms, provider?, error? })` that writes one `console.info`/`console.error` JSON line (never the user's code, prompt or IP), add an optional `onProvider(name)` callback to `askLLM`'s options in `lib/complete.ts` so routes can record which provider answered, and call the logger once per request (including 400/413/429 exits) in `app/api/complete`, `fix` and `generate`. Add a Vitest case asserting the logged object has no `code`/`prompt`/`prefix` fields; if the route-tests task has landed by then, assert one log call per request there too.
+
+- [x] **Add "Open .c file" and "Download .c" to the editor header** — status: done
+  Students write C in files and currently must copy/paste. Add two header buttons in `app/page.tsx`: "Open" uses a hidden `<input type="file" accept=".c,.h,.txt">` and loads the file text into the editor (reject files over 20000 chars with a toast "File too large for the visualizer (max 20000 characters)") then runs it once like a share link does; "Download" saves the current editor text as `program.c` via a Blob + object URL (revoke it afterwards). Both buttons need `aria-label`s and must not overwrite code if the file read fails; lint/typecheck/test/build pass.
+
 ## Run log
 
 ### 2026-10-01 — planner run (improvement proposals)
@@ -78,3 +90,18 @@
 - Did: deleted `app/api/analyze/route.ts`, `lib/{llm,prompt,types,steps}.ts` and their two tests; dropped unused env docs; README is now clean UTF-8 and describes the interpreter/AI features. `generateCode` now parses with `parseC`, retries once with the parser error, and returns `{code, warning}`, which the editor notice shows. Added 3 mocked tests.
 - Results: `npm test` 126/126, `npm run lint` 0 errors (2 old warnings), `npm run typecheck` clean, `npm run build` succeeds.
 - Not pushed (needs user confirmation). Next: Web Worker for the interpreter, then route tests + shared rate-limit helper.
+
+### 2026-10-04 — planner run 2 (improvement proposals)
+- Surveyed: full status file, `git log` (8 commits, HEAD 2b1292e on `autopilot/cleanup-and-ai-validate`, tree clean), package.json, CI workflow, next.config.ts, file tree, all three AI routes, `lib/fix.ts`, `lib/complete.ts` head, interpreter limits/builtins/error paths in `lib/c/interp.ts`, parser feature coverage, `app/page.tsx` AI/fix wiring, "Fix with AI" action in `components/editorExtras.ts`, a11y attributes across components, `tests/examples.test.ts`, `eslint` output (0 errors, 2 warnings). No TODO/FIXME/XXX markers.
+- Two pending tasks remain (Web Worker, route tests + rate-limit helper); added four that do not overlap them.
+- Added "Fix with AI safety": new angle on the item deferred last run: the action overwrites the line even if the student edited it while waiting, has no timeout/abort, and never checks the fix actually cleared the error. It is client-side and does not depend on the route tests.
+- Added "CI build + zero lint warnings": CI never runs `next build`, which matters more once the Web Worker task changes bundling; the two warnings are dead code.
+- Added "structured AI-route logs": no server logging exists, so provider failures/timeouts are invisible in production; explicitly excludes user code and IPs.
+- Added "Open/Download .c file": a cheap workflow gap for students who keep their code in files.
+- Deliberately not added: more interpreter features (parser already covers switch/do/enum/typedef/union/static; only compound literals and `goto` are rejected, rare for beginners); a "continue past 4000 steps" option (wait for the Web Worker task, which changes how runs execute); security headers/CSP (low impact for a no-auth, no-cookie app and CSP risks breaking Next inline scripts); MemoryView screen-reader work (needs a closer audit first; the gallery, tabs, console and scrubber already have labels); real SVG pointer arrows (ValueView/MemoryView already draw SVG arrows, so the old deferral is resolved).
+
+### 2026-10-04 — autopilot run 4
+- Picked up: Fix-with-AI safety, CI build + zero lint warnings, Open/Download .c buttons.
+- Did: Fix with AI now has a 20s timeout, skips if the line changed meanwhile, and reports if the error remains (`fixStillApplies`/`fixOutcome` in `lib/fix.ts` + tests); removed dead `findMoves` and the unused eslint-disable, lint is `--max-warnings=0`, CI runs `npm run build`; header Open/Download buttons (loaded file is not auto-run, unlike the task text).
+- Results: `npm test` 128/128, lint 0 warnings, typecheck clean, build succeeds. Not pushed.
+- Next: Web Worker task, route tests + rate-limit helper, structured AI logs.

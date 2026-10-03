@@ -175,11 +175,12 @@ export default function Home() {
   const diagOptions: DiagOptions = useMemo(
     () => ({
       onNotice: (m) => flash(m, 6000),
-      fetchFix: async (c, line, message) => {
+      fetchFix: async (c, line, message, signal) => {
         const res = await fetch("/api/fix", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code: c, line, message }),
+          signal,
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : `HTTP ${res.status}`);
@@ -323,6 +324,27 @@ export default function Home() {
     }
   };
 
+  const fileInput = useRef<HTMLInputElement>(null);
+  const openFile = async (f: File | undefined) => {
+    if (!f) return;
+    try {
+      const text = await f.text();
+      if (text.length > 20000) return flash("File too large for the visualizer (max 20000 characters)");
+      reset();
+      setCode(text);
+    } catch {
+      flash("Could not read that file");
+    }
+  };
+  const downloadFile = () => {
+    const url = URL.createObjectURL(new Blob([code], { type: "text/x-csrc" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "program.c";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const errorLine = compileErr ? compileErr.line : step?.kind === "error" ? step.line : null;
   const bar = "flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-3 text-sm text-white/90 backdrop-blur transition hover:border-violet-400/40 hover:bg-white/[0.1]";
 
@@ -367,6 +389,13 @@ export default function Home() {
           </button>
           <button className={`${bar} lift hidden sm:flex`} onClick={share}>
             Share
+          </button>
+          <input ref={fileInput} type="file" accept=".c,.h,.txt" className="hidden" aria-label="Open a C file" onChange={(e) => { void openFile(e.target.files?.[0]); e.target.value = ""; }} />
+          <button className={`${bar} lift hidden lg:flex`} aria-label="Open a .c file" onClick={() => fileInput.current?.click()}>
+            Open
+          </button>
+          <button className={`${bar} lift hidden lg:flex`} aria-label="Download code as program.c" onClick={downloadFile}>
+            Download
           </button>
           <button
             className={`${bar} lift hidden md:flex whitespace-nowrap ${aiOn ? "ai-glow" : ""}`}

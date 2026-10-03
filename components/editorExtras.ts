@@ -1,6 +1,7 @@
 import { autocompletion, completionStatus, snippetCompletion, type Completion, type CompletionContext } from "@codemirror/autocomplete";
 import { linter, lintGutter, type Action, type Diagnostic } from "@codemirror/lint";
 import { diagnose } from "@/lib/diagnostics";
+import { fixOutcome, fixStillApplies } from "@/lib/fix";
 import { Prec, StateEffect, StateField, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, GutterMarker, ViewPlugin, WidgetType, gutter, keymap, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 
@@ -325,7 +326,7 @@ export function aiPrompt(opts: () => AiOptions | undefined): Extension {
 
 export interface DiagOptions {
   /** ask the AI to rewrite one line; resolves with the new line text and a short explanation */
-  fetchFix?: (code: string, line: number, message: string) => Promise<{ replacement: string; explanation: string; endLine?: number }>;
+  fetchFix?: (code: string, line: number, message: string, signal?: AbortSignal) => Promise<{ replacement: string; explanation: string; endLine?: number }>;
   /** show a short message to the user (e.g. what the AI changed) */
   onNotice?: (msg: string) => void;
 }
@@ -354,13 +355,18 @@ export function liveDiagnostics(opts: () => DiagOptions | undefined): Extension 
                 const o = opts();
                 if (!o?.fetchFix) return;
                 const line = v.state.doc.lineAt(from);
+                const sent = v.state.doc.toString();
                 try {
                   o.onNotice?.("AI is looking at this line…");
-                  const r = await o.fetchFix(v.state.doc.toString(), line.number, d.message);
-                  const cur = v.state.doc.line(Math.min(line.number, v.state.doc.lines));
-                  const last = v.state.doc.line(Math.min(Math.max(r.endLine ?? line.number, line.number), v.state.doc.lines));
-                  v.dispatch({ changes: { from: cur.from, to: last.to, insert: r.replacement }, userEvent: "input.fix" });
-                  o.onNotice?.(`AI fix: ${r.explanation}`);
+                  const r = await o.fetchFix(sent, line.number, d.message, AbortSignal.timeout(20000));
+                  const doc = v.state.doc;
+                  const endNo = Math.min(Math.max(r.endLine ?? line.number, line.number), doc.lines);
+                  const expected = sent.split("\n").slice(line.number - 1, endNo);
+                  if (!fixStillApplies(doc.toString(), line.number, endNo, expected)) {
+                    return o.onNotice?.("AI fix skipped: you changed that line while the AI was working");
+                  }
+                  v.dispatch({ changes: { from: doc.line(line.number).from, to: doc.line(endNo).to, insert: r.replacement }, userEvent: "input.fix" });
+                  o.onNotice?.(fixOutcome(diagnose(v.state.doc.toString()), line.number, r.explanation));
                 } catch (e) {
                   o.onNotice?.(e instanceof Error && e.message ? `AI fix failed: ${e.message}` : "AI fix failed");
                 }

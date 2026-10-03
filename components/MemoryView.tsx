@@ -73,7 +73,6 @@ function Arrows({
       );
     };
     // measuring the DOM after layout is exactly what this effect is for
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     measure();
     const t1 = setTimeout(measure, 80);
     const t2 = setTimeout(measure, 420);
