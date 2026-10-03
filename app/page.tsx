@@ -12,6 +12,7 @@ import type { DiagOptions } from "@/components/editorExtras";
 import CodeEditor from "@/components/CodeEditor";
 import Console from "@/components/Console";
 import MemoryView from "@/components/MemoryView";
+import PanelBoundary from "@/components/PanelBoundary";
 import { Controls, Explain } from "@/components/StepPlayer";
 import { EXAMPLES, STARTER } from "@/lib/examples";
 import { runC } from "@/lib/c/interp";
@@ -464,7 +465,9 @@ export default function Home() {
             <>
               <Console output={shownOutput} prevOutput={prevOutput} awaitingInput={awaitingInput} onSubmit={submitInput} onEof={closeInput} />
               <div className="glass shrink-0 rounded-2xl">
-                <MemoryView step={step} stepKey={idx} prevStep={idx > 0 ? steps[idx - 1] : undefined} />
+                <PanelBoundary resetKey={idx}>
+                  <MemoryView step={step} stepKey={idx} prevStep={idx > 0 ? steps[idx - 1] : undefined} />
+                </PanelBoundary>
               </div>
               <Explain step={step} warnings={run?.warnings ?? []} truncated={run?.truncated ?? false} />
               <StudyPanel
