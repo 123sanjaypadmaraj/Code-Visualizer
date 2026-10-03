@@ -236,3 +236,13 @@
 - Did: added a "Checks" table (lint, typecheck, test incl. gcc skip, build, e2e needing Chrome, port 3123) and listed all four provider keys in the Vercel steps; verified against `package.json`, `playwright.config.ts`, `.env.example`.
 - Results: no code changed; last full run was 202/202 tests, lint/typecheck/build clean. Not pushed.
 - Next: backlog empty.
+
+### 2026-10-04 — planner run 12 (improvement proposals)
+- Surveyed: full status file, `git log` (18 commits, HEAD fc14e5f on `autopilot/cleanup-and-ai-validate`, tree clean), package.json, tracked file tree, `.github/workflows/ci.yml`, stat of the last commit (README + this file only). No TODO/FIXME/XXX markers in `app/`, `lib/`, `components/`, `tests/` or `e2e/`.
+- Added nothing. Since planner run 11 the only change is a docs-only README commit, which opened no new gap. Every gap found in earlier runs is closed: unit, robustness, gcc differential, route, worker and e2e tests; CI with build and zero-warning lint; rate limits, timeouts and structured logs on AI routes; error boundaries; worker-based runs. Anything else surveyed would be padding.
+- Deliberately not added: verifying the CI e2e job (needs a real PR run to `main`, which is the user's push decision); the same deferrals as planner runs 9-11 ("continue past 4000 steps", cancelling runs on edit, Open Graph metadata, more builtins, compound literals/`goto`, CSP headers, MemoryView screen-reader work, `.archify/` cleanup, splitting `lib/c/interp.ts`). The useful next step is for the user to review and push/merge the `autopilot/cleanup-and-ai-validate` branch (11 local commits ahead of `main`, not pushed), not more autopilot work.
+
+### 2026-10-04 — planner run 13 (improvement proposals)
+- Surveyed: full status file, `git log` (HEAD still fc14e5f, the same commit planner run 12 surveyed; the only uncommitted change is that run's log entry in this file), tracked file tree. No TODO/FIXME/XXX markers in `app/`, `lib/`, `components/`, `tests/` or `e2e/`.
+- Added nothing. No code has changed since planner run 12, so no new gap can exist that it did not already consider. This is the third run in a row with nothing to add.
+- Deliberately not added: the same deferrals as planner runs 9-12. Recommendation stands: the user should review and push/merge `autopilot/cleanup-and-ai-validate` (which also lets the CI e2e job be verified) before more planner/autopilot cycles. Further planner runs on an unchanged tree will not add anything.
