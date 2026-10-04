@@ -29,14 +29,14 @@ export function cleanGenerated(raw: string): string {
   return clean(raw).code;
 }
 
-function clean(raw: string): { code: string; truncated: boolean } {
+export function clean(raw: string, maxLines = MAX_LINES, maxChars = MAX_CHARS): { code: string; truncated: boolean } {
   let t = raw.replace(/\r/g, "");
   const fence = t.match(/```[a-zA-Z]*\n?([\s\S]*?)(```|$)/);
   if (fence) t = fence[1];
   t = t.replace(/^<<<\n?|\n?>>>$/g, "").replace(/<CURSOR>/g, "");
   const lines = t.split("\n");
-  const truncated = lines.length > MAX_LINES || t.length > MAX_CHARS;
-  t = lines.slice(0, MAX_LINES).join("\n").slice(0, MAX_CHARS);
+  const truncated = lines.length > maxLines || t.length > maxChars;
+  t = lines.slice(0, maxLines).join("\n").slice(0, maxChars);
   return { code: t.replace(/^\n+/, "").replace(/\s+$/, ""), truncated };
 }
 
@@ -46,7 +46,7 @@ export interface Generated {
   warning?: string;
 }
 
-function parseProblem(code: string): string | null {
+export function parseProblem(code: string): string | null {
   try {
     parseC(code);
     return null;

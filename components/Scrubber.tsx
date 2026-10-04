@@ -32,7 +32,7 @@ export default function Scrubber({ steps, idx, setIdx }: { steps: TraceStep[]; i
   if (total < 2) return null;
   const pct = (idx / (total - 1)) * 100;
   return (
-    <div className="flex items-center gap-3 border-b border-white/10 bg-[#222329] px-6 py-2" aria-label="Execution timeline">
+    <div className="flex items-center gap-3 border-b border-white/10 bg-raised px-6 py-2" aria-label="Execution timeline">
       <span className="w-16 shrink-0 text-xs text-white/45">Timeline</span>
       <div className="relative h-5 flex-1">
         <div className="absolute inset-x-0 top-1/2 flex h-2 -translate-y-1/2 gap-px overflow-hidden rounded-full">

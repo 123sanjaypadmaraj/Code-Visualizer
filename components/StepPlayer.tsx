@@ -36,14 +36,14 @@ export function Controls({
   };
   const atEnd = idx >= total - 1;
   const pct = total > 1 ? (idx / (total - 1)) * 100 : 0;
-  const box = "flex h-10 items-center gap-2 rounded border border-white/15 bg-[#23262f] px-4 text-sm font-medium text-white transition-colors hover:bg-[#2c303b] disabled:cursor-not-allowed disabled:opacity-40";
+  const box = "flex h-10 items-center gap-2 rounded border border-white/15 bg-surface px-4 text-sm font-medium text-white transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40";
   return (
     <div className="flex items-center gap-2">
       <button className={box} onClick={() => go(idx - 1)} disabled={idx === 0} title="Previous (←)">
         <span aria-hidden>⏮</span> Prev Step
       </button>
       <button
-        className="flex h-10 min-w-44 items-stretch overflow-hidden rounded border border-white/15 bg-[#23262f] text-left disabled:opacity-40"
+        className="flex h-10 min-w-44 items-stretch overflow-hidden rounded border border-white/15 bg-surface text-left disabled:opacity-40"
         onClick={() => {
           if (!playing && atEnd) setIdx(0);
           setPlaying(!playing);
@@ -65,7 +65,7 @@ export function Controls({
         </span>
       </button>
       <button
-        className="h-10 w-12 rounded border border-white/15 bg-[#23262f] text-sm font-semibold text-white hover:bg-[#2c303b]"
+        className="h-10 w-12 rounded border border-white/15 bg-surface text-sm font-semibold text-white hover:bg-surface-hover"
         onClick={() => setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length])}
         title="Playback speed"
       >

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ExampleGallery from "@/components/ExampleGallery";
 import Scrubber from "@/components/Scrubber";
 import StudyPanel from "@/components/StudyPanel";
+import ThemePicker from "@/components/ThemePicker";
 import { aiFailureReason } from "@/lib/aiReason";
 import { runCAsync } from "@/lib/c/runAsync";
 import { buildShareHash, parseShareHash } from "@/lib/share";
@@ -154,6 +155,17 @@ export default function Home() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prompt, before, after }),
+          signal,
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(aiFailureReason(res.status, typeof body?.error === "string" ? body.error : ""));
+        return { code: typeof body?.code === "string" ? body.code : "", warning: typeof body?.warning === "string" ? body.warning : undefined };
+      },
+      fixAll: async (code, hint, signal) => {
+        const res = await fetch("/api/fixall", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, hint }),
           signal,
         });
         const body = await res.json().catch(() => null);
@@ -379,11 +391,12 @@ export default function Home() {
           {errorCount ? `✕ ${errorCount} error${errorCount > 1 ? "s" : ""}` : warnCount ? `⚠ ${warnCount} warning${warnCount > 1 ? "s" : ""}` : "✓ No problems"}
         </span>
         {problems[0] && <span className="hidden max-w-md truncate text-xs text-white/50 lg:inline">Line {problems[0].line}: {problems[0].message}</span>}
+        <ThemePicker />
       </header>
 
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 glass-bar border-b border-white/10 px-6 py-2.5">
         <div className="flex items-center gap-2">
-          <span className="rounded border border-white/15 bg-[#23262f] px-2.5 py-2 font-mono text-xs font-bold text-white">C</span>
+          <span className="rounded border border-white/15 bg-surface px-2.5 py-2 font-mono text-xs font-bold text-white">C</span>
           <span className="text-white/40">/</span>
           <select
             aria-label="Example program"
@@ -391,11 +404,11 @@ export default function Home() {
             onChange={(e) => load(e.target.value)}
             className={`${bar} max-w-56`}
           >
-            <option value="" disabled className="bg-slate-900">
+            <option value="" disabled className="bg-raised">
               Examples…
             </option>
             {EXAMPLES.map((ex) => (
-              <option key={ex.name} value={ex.name} className="bg-slate-900">
+              <option key={ex.name} value={ex.name} className="bg-raised">
                 {ex.name}
               </option>
             ))}
@@ -417,7 +430,7 @@ export default function Home() {
             className={`${bar} lift hidden md:flex whitespace-nowrap ${aiOn ? "ai-glow" : ""}`}
             onClick={toggleAi}
             aria-pressed={aiOn}
-            title={aiOn && aiStatus === "error" && aiReason ? `AI autocomplete failed: ${aiReason}` : "AI autocomplete: pause typing to get a suggestion, Tab accepts, Esc dismisses. Type /ai <request> and press Enter to generate code."}
+            title={aiOn && aiStatus === "error" && aiReason ? `AI autocomplete failed: ${aiReason}` : "AI autocomplete: pause typing to get a suggestion, Tab accepts, Esc dismisses. Type /ai <request> and press Enter to generate code, or /fix and Enter to repair your whole program."}
           >
             <span
               aria-hidden
@@ -461,7 +474,7 @@ export default function Home() {
       {mode === "run" && total > 1 && <Scrubber steps={steps} idx={idx} setIdx={(i) => { setPlaying(false); setStepIdx(i); }} />}
 
       <main className="grid min-h-0 flex-1 lg:grid-cols-2">
-        <section className="min-h-[340px] min-w-0 border-r border-white/10 bg-black/30 backdrop-blur">
+        <section className="min-h-[340px] min-w-0 border-r border-white/10 bg-deep/50 backdrop-blur">
           <CodeEditor value={code} onChange={setCode} activeLine={mode === "run" && step ? step.line : null} errorLine={errorLine}
             readOnly={mode === "run"}
             hits={mode === "run" && showHeat && stats ? stats.hits : null}

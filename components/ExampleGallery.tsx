@@ -60,7 +60,7 @@ export default function ExampleGallery({ open, onClose, onPick }: { open: boolea
   if (!open) return null;
   return (
     <div className="fade-in fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onMouseDown={onClose} role="dialog" aria-modal="true" aria-label="Example programs">
-      <div className="pop-in flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-white/15 bg-[#202127] shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="pop-in flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-white/15 bg-raised shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
           <h2 className="text-base font-semibold text-white">Example programs</h2>
           <input
@@ -68,7 +68,7 @@ export default function ExampleGallery({ open, onClose, onPick }: { open: boolea
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search: pointers, sorting, recursion…"
-            className="ml-2 h-9 flex-1 rounded border border-white/15 bg-[#17181d] px-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-cyan-400/70"
+            className="ml-2 h-9 flex-1 rounded border border-white/15 bg-deep px-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-cyan-400/70"
           />
           <button onClick={onClose} className="rounded px-2 py-1 text-white/60 hover:bg-white/10 hover:text-white" aria-label="Close">
             ✕
@@ -94,7 +94,7 @@ export default function ExampleGallery({ open, onClose, onPick }: { open: boolea
               <button
                 key={ex.name}
                 onClick={() => onPick(ex.name)}
-                className="lift group flex flex-col items-start gap-2 rounded-lg border border-white/10 bg-[#262830] p-4 text-left hover:border-cyan-400/50"
+                className="lift group flex flex-col items-start gap-2 rounded-lg border border-white/10 bg-raised p-4 text-left hover:border-cyan-400/50"
               >
                 <div className="flex w-full items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-white group-hover:text-cyan-200">{ex.name}</span>

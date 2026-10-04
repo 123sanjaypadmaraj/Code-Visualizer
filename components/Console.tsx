@@ -31,10 +31,10 @@ export default function Console({
 
   return (
     <div className="relative">
-      <span className="absolute -top-px left-0 z-10 rounded-t border border-b-0 border-[#5a3b3b] bg-[#1f1f20] px-2 py-0.5 font-mono text-[11px] text-[#e5848a]">
+      <span className="absolute -top-px left-0 z-10 rounded-t border border-b-0 border-red-400/40 bg-deep px-2 py-0.5 font-mono text-[11px] text-red-300">
         Output
       </span>
-      <div className="mt-[22px] flex min-h-[104px] flex-col gap-2 rounded border border-white/10 bg-[#2a2b2e] px-4 py-3">
+      <div className="mt-[22px] flex min-h-[104px] flex-col gap-2 rounded border border-white/10 bg-raised px-4 py-3">
         <pre className="max-h-40 flex-1 overflow-auto whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-white/90">
           <span>{old}</span>
           <span className="bg-emerald-400/20">{fresh}</span>

@@ -1,4 +1,6 @@
 import { askLLM } from "./complete";
+import { diagnose } from "./diagnostics";
+import { clean, parseProblem } from "./generate";
 
 export const FIX_SYSTEM = `You are a friendly C tutor inside a learning tool. A student's program has a problem on one line.
 Reply with ONLY a JSON object: {"explanation": string, "replacement": string, "endLine": number}
@@ -69,4 +71,64 @@ export function fixStillApplies(doc: string, line: number, endLine: number, expe
 export function fixOutcome(remaining: { severity: string; line: number }[], line: number, explanation: string): string {
   const still = remaining.some((d) => d.severity === "error" && d.line === line);
   return still ? `AI fix: ${explanation} (this line still has an error, try again or edit it by hand)` : `AI fix: ${explanation}`;
+}
+
+/* ------------------------- "/fix": repair the whole program ------------------------- */
+
+export const FIXALL_SYSTEM = `You are a friendly C tutor inside a learning tool. A student wrote a C program that has errors.
+Work out what the program is MEANT to do (from its names, comments, structure and any HINT), then return the corrected program.
+Reply with ONLY the complete corrected C program.
+Rules:
+- Plain C (C99), standard library only.
+- Fix every syntax error, type error, missing include/semicolon/brace, undeclared variable, off-by-one, infinite loop, memory or logic bug that stops the program from doing its intended job.
+- Keep the student's structure, variable names, style and comments. Change as little as possible; do not rewrite working code or add new features.
+- Output raw code: no markdown fences, no explanations. If you changed something non-obvious, add a short // comment on that line.`;
+
+export function buildFixAllPrompt(code: string, hint: string, problems: string[]): string {
+  const found = problems.length ? `\nProblems already detected by the tool:\n${problems.map((p) => `- ${p}`).join("\n")}\n` : "";
+  return `${hint ? `HINT from the student: ${hint}\n` : ""}${found}
+PROGRAM:
+<<<
+${code}
+>>>
+
+Return the complete corrected program:`;
+}
+
+const FIXALL_LINES = 300;
+const FIXALL_CHARS = 9000;
+
+export interface FixedAll {
+  code: string;
+  /** set when the result is cut short or still does not parse */
+  warning?: string;
+}
+
+/** Send the whole program to the model and get the repaired program back; retries once if the result does not parse. */
+export async function fixAllCode(code: string, hint = "", signal?: AbortSignal): Promise<FixedAll> {
+  const problems = diagnose(code)
+    .filter((d) => d.severity === "error")
+    .map((d) => `line ${d.line}: ${d.message}`);
+  const prompt = buildFixAllPrompt(code, hint, problems);
+  const ask = (p: string) => askLLM(FIXALL_SYSTEM, p, { maxTokens: 3500, timeoutMs: 25000, signal });
+  let { code: out, truncated } = clean(await ask(prompt), FIXALL_LINES, FIXALL_CHARS);
+  if (!out) return { code: "" };
+  let problem = parseProblem(out);
+  if (problem) {
+    const retry = clean(
+      await ask(`${prompt}
+
+Your previous answer failed to parse (${problem}):
+<<<
+${out}
+>>>
+Return a corrected, complete program.`),
+      FIXALL_LINES,
+      FIXALL_CHARS,
+    );
+    if (retry.code) ({ code: out, truncated } = retry);
+    problem = parseProblem(out);
+  }
+  const warning = problem ? `AI fix may not compile: ${problem}` : truncated ? "AI fix was cut short (too long)" : undefined;
+  return warning ? { code: out, warning } : { code: out };
 }

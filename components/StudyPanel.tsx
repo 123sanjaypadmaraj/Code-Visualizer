@@ -79,7 +79,7 @@ function TableTab({ steps, idx, setIdx }: { steps: TraceStep[]; idx: number; set
       </p>
       <div className="max-h-72 overflow-auto rounded border border-white/10">
         <table className="w-full border-collapse font-mono text-xs">
-          <thead className="sticky top-0 bg-[#2a2c33] text-white/70">
+          <thead className="sticky top-0 bg-raised text-white/70">
             <tr>
               <th className="px-2 py-1.5 text-left font-semibold">step</th>
               <th className="px-2 py-1.5 text-left font-semibold">line</th>
@@ -149,12 +149,12 @@ function QuizTab({
               const isAnswer = q.answer === c;
               const style =
                 picked === undefined
-                  ? "border-white/15 bg-[#23262f] hover:bg-[#2c303b]"
+                  ? "border-white/15 bg-surface hover:bg-surface-hover"
                   : isAnswer
                     ? "border-emerald-400/70 bg-emerald-400/15 text-emerald-100"
                     : isPicked
                       ? "border-red-400/70 bg-red-400/15 text-red-100"
-                      : "border-white/10 bg-[#23262f] opacity-50";
+                      : "border-white/10 bg-surface opacity-50";
               return (
                 <button
                   key={c}
@@ -177,7 +177,7 @@ function QuizTab({
               <div className="mt-2">
                 <button
                   onClick={() => setIdx(idx + 1)}
-                  className="rounded border border-white/15 bg-[#23262f] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#2c303b]"
+                  className="rounded border border-white/15 bg-surface px-3 py-1.5 text-xs font-semibold text-white hover:bg-surface-hover"
                 >
                   Show the next step →
                 </button>
@@ -292,7 +292,7 @@ export default function StudyPanel({
   const atEnd = idx >= steps.length - 1;
 
   return (
-    <section className="shrink-0 rounded border border-white/10 bg-[#1f1f20]" aria-label="Study panel">
+    <section className="shrink-0 rounded border border-white/10 bg-deep" aria-label="Study panel">
       <div className="flex border-b border-white/10" role="tablist">
         {TABS.map((t) => {
           const disabled = t.needsRun && !running;

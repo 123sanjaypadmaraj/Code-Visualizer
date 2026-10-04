@@ -72,6 +72,9 @@ export const lineClick = (cb: (line: number) => void): Extension =>
     },
   });
 
+/** an editor command line: "/ai <request>" or "/fix [hint]" */
+const CMD_LINE = /^\s*\/(ai|fix)(\s|$)/;
+
 /* ----------------------------- offline C completions ----------------------------- */
 
 const KEYWORDS = [
@@ -108,6 +111,7 @@ export const cCompletions: Extension = autocompletion({
   activateOnTyping: true,
   override: [
     (ctx: CompletionContext) => {
+      if (CMD_LINE.test(ctx.state.doc.lineAt(ctx.pos).text)) return null;
       const w = ctx.matchBefore(/#?\w*/);
       if (!w || (w.from === w.to && !ctx.explicit)) return null;
       const options: Completion[] = [
@@ -176,7 +180,9 @@ export interface AiOptions {
   onError?: (e: unknown) => void;
   /** "/ai <request>" + Enter: write code from a plain-English request (before/after = code around the line) */
   generate?: (prompt: string, before: string, after: string, signal: AbortSignal) => Promise<{ code: string; warning?: string }>;
-  /** show a short message to the user (progress / errors of "/ai") */
+  /** "/fix [hint]" + Enter: send the whole program to the AI, get the repaired program back */
+  fixAll?: (code: string, hint: string, signal: AbortSignal) => Promise<{ code: string; warning?: string }>;
+  /** show a short message to the user (progress / errors of "/ai" and "/fix") */
   onNotice?: (msg: string) => void;
   delayMs?: number;
 }
@@ -196,7 +202,7 @@ function aiPlugin(opts: AiOptions) {
         // only suggest when the caret is at the end of a line
         if (head !== line.to) return;
         // "/ai <request>" lines are prompts for the generator, not code to complete
-        if (/^\s*\/ai(\s|$)/.test(line.text)) return;
+        if (CMD_LINE.test(line.text)) return;
         if (!line.text.trim() && u.state.doc.lines === 1) return;
         this.timer = setTimeout(() => this.request(head), opts.delayMs ?? 650);
       }
@@ -267,59 +273,100 @@ export function aiGhost(opts: AiOptions): Extension {
   ];
 }
 
-/* ------------------------- "/ai <request>" writes code for you ------------------------- */
+/* ------------------- "/ai <request>" and "/fix" rewrite the whole program ------------------- */
+
+const cmdLine = Decoration.line({ class: "cm-ai-cmd" });
+
+/** Colours the whole "/ai ..." or "/fix ..." line so it reads as a command, not as C code. */
+const cmdHighlight = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = this.build(view);
+    }
+    update(u: ViewUpdate) {
+      if (u.docChanged || u.viewportChanged) this.decorations = this.build(u.view);
+    }
+    build(view: EditorView): DecorationSet {
+      const ranges = [];
+      for (const { from, to } of view.visibleRanges) {
+        for (let pos = from; pos <= to; ) {
+          const line = view.state.doc.lineAt(pos);
+          if (CMD_LINE.test(line.text)) ranges.push(cmdLine.range(line.from));
+          pos = line.to + 1;
+        }
+      }
+      return Decoration.set(ranges);
+    }
+  },
+  { decorations: (v) => v.decorations },
+);
 
 const AI_LINE = /^(\s*)\/ai\s+(\S.*?)\s*$/;
+const FIX_LINE = /^(\s*)\/fix(?:\s+(.*?))?\s*$/;
 
 export function aiPrompt(opts: () => AiOptions | undefined): Extension {
   let busy = false;
-  return Prec.highest(
-    keymap.of([
-      {
-        key: "Enter",
-        run(view) {
-          const o = opts();
-          if (!o?.generate || view.state.readOnly || busy) return false;
-          const sel = view.state.selection.main;
-          const line = view.state.doc.lineAt(sel.head);
-          const m = sel.empty && sel.head === line.to ? AI_LINE.exec(line.text) : null;
-          if (!m) return false;
-          const request = m[2];
-          const original = line.text;
-          const doc = view.state.doc;
-          // the whole program is context (minus the /ai line itself); the reply replaces all of it
-          const before = doc.sliceString(0, line.from);
-          const after = doc.sliceString(line.to + 1, doc.length);
-          busy = true;
-          o.onNotice?.("AI is writing a new program… (Esc to cancel)");
-          const ctrl = new AbortController();
-          const cancel = (e: KeyboardEvent) => {
-            if (e.key === "Escape") ctrl.abort();
-          };
-          document.addEventListener("keydown", cancel);
-          o.generate(request, before, after, ctrl.signal)
-            .then(({ code, warning }) => {
-              // the user may have edited while waiting: make sure the "/ai" line is still there
-              if (view.state.doc.toString().indexOf(original) < 0) return o.onNotice?.("AI finished, but the /ai line was changed, so nothing was replaced");
-              view.dispatch({
-                changes: { from: 0, to: view.state.doc.length, insert: code },
-                selection: { anchor: code.length },
-                userEvent: "input.complete",
+  return [
+    cmdHighlight,
+    Prec.highest(
+      keymap.of([
+        {
+          key: "Enter",
+          run(view) {
+            const o = opts();
+            if (!o || view.state.readOnly || busy) return false;
+            const sel = view.state.selection.main;
+            const line = view.state.doc.lineAt(sel.head);
+            if (!sel.empty || sel.head !== line.to) return false;
+            const ai = AI_LINE.exec(line.text);
+            const fix = ai ? null : FIX_LINE.exec(line.text);
+            const run = ai ? o.generate : fix ? o.fixAll : undefined;
+            if (!run) return false;
+            const original = line.text;
+            const doc = view.state.doc;
+            // the whole program (minus the command line itself) is the context; the reply replaces all of it
+            const before = doc.sliceString(0, line.from);
+            const after = doc.sliceString(line.to + 1, doc.length);
+            const verb = ai ? "write a new program" : "fix your program";
+            busy = true;
+            o.onNotice?.(ai ? "AI is writing a new program… (Esc to cancel)" : "AI is fixing your program… (Esc to cancel)");
+            const ctrl = new AbortController();
+            const cancel = (e: KeyboardEvent) => {
+              if (e.key === "Escape") ctrl.abort();
+            };
+            document.addEventListener("keydown", cancel);
+            const job = ai ? o.generate!(ai[2], before, after, ctrl.signal) : o.fixAll!(before + after, fix![2] ?? "", ctrl.signal);
+            job
+              .then(({ code, warning }) => {
+                // the user may have edited while waiting: make sure the command line is still there
+                if (view.state.doc.toString().indexOf(original) < 0) return o.onNotice?.(`AI finished, but the ${ai ? "/ai" : "/fix"} line was changed, so nothing was replaced`);
+                view.dispatch({
+                  changes: { from: 0, to: view.state.doc.length, insert: code },
+                  selection: { anchor: code.length },
+                  userEvent: "input.complete",
+                });
+                o.onNotice?.(
+                  warning
+                    ? `${warning}. Undo (Ctrl+Z) to get your code back.`
+                    : ai
+                      ? "AI replaced your code with a new program. Undo (Ctrl+Z) if it is not what you wanted."
+                      : "AI fixed your program. Undo (Ctrl+Z) to get your old code back.",
+                );
+              })
+              .catch((e) => {
+                o.onNotice?.(ctrl.signal.aborted ? "Cancelled" : e instanceof Error && e.message ? `AI could not ${verb}: ${e.message}` : `AI could not ${verb}`);
+              })
+              .finally(() => {
+                busy = false;
+                document.removeEventListener("keydown", cancel);
               });
-              o.onNotice?.(warning ? `${warning}. Undo (Ctrl+Z) to get your code back.` : "AI replaced your code with a new program. Undo (Ctrl+Z) if it is not what you wanted.");
-            })
-            .catch((e) => {
-              o.onNotice?.(ctrl.signal.aborted ? "Cancelled" : e instanceof Error && e.message ? `AI could not write code: ${e.message}` : "AI could not write code");
-            })
-            .finally(() => {
-              busy = false;
-              document.removeEventListener("keydown", cancel);
-            });
-          return true;
+            return true;
+          },
         },
-      },
-    ]),
-  );
+      ]),
+    ),
+  ];
 }
 
 /* ------------------------- live error underlines (like VS Code) ------------------------- */
