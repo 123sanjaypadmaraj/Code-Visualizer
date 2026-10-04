@@ -74,6 +74,9 @@
 - [x] **Run CI on pushes to `autopilot/**` branches and allow manual runs** — status: done
   `.github/workflows/ci.yml` triggers only on `push`/`pull_request` to `main`, so the now-pushed `autopilot/cleanup-and-ai-validate` branch (and every future autopilot branch) gets no CI run at all, and the `e2e` job (which relies on Chrome being preinstalled on the ubuntu runner via `channel: "chrome"`) has never run anywhere. Change the `push` trigger to `branches: [main, "autopilot/**"]` and add `workflow_dispatch:`, leaving `pull_request` and both jobs unchanged; add a `concurrency` group (`ci-${{ github.ref }}`, `cancel-in-progress: true`) so a push to the branch and its PR run don't pile up. Config-only change: done when the YAML is valid (check indentation by eye against GitHub's documented `on:` syntax) and lint/typecheck/test still pass; do not push, since whether and when to push is the user's call.
 
+- [x] **Make CI e2e failures diagnosable (trace, retry, report artifact)** — status: done
+  The CI `e2e` job is about to run for the first time (after `ab8352b` is pushed), but `playwright.config.ts` has no `retries`, `trace` or `reporter` settings and `.github/workflows/ci.yml` uploads nothing, so a failure gives only a console log. In `playwright.config.ts` add `retries: process.env.CI ? 1 : 0`, `reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list"`, and `trace: "retain-on-failure"` plus `screenshot: "only-on-failure"` inside `use` (keep `channel: "chrome"`, port 3123 and the `webServer` block unchanged); in the `e2e` job add `timeout-minutes: 15` and a final `actions/upload-artifact@v4` step with `if: ${{ !cancelled() }}`, `name: playwright-report`, `path: playwright-report/ test-results/`, `retention-days: 7`. Config-only: done when `npm run e2e` still passes locally (3/3) and leaves no new untracked files (both folders are already in `.gitignore`), lint/typecheck pass, and the YAML matches GitHub's documented step syntax; do not push.
+
 ## Run log
 
 ### 2026-10-01 — planner run (improvement proposals)
@@ -272,3 +275,16 @@
 - Tests: lint, typecheck clean; 202/202 unit tests pass. Build/e2e not run locally (config-only change).
 - Branch: committed locally on `autopilot/cleanup-and-ai-validate`; not pushed (needs user confirmation). Pushing will trigger the first CI run, including the never-run e2e job.
 - Next: after the push, check the CI result; if e2e fails, fix the job.
+
+### 2026-10-04 — planner run 17 (improvement proposals)
+- Surveyed: full status file, `git log --oneline -30` (HEAD ab8352b, 1 commit ahead of `origin/autopilot/cleanup-and-ai-validate`, not pushed; it changes only `ci.yml` and this file; d0468dc changed only this file), `git branch -vv`, tracked file tree (no change to application code since planner run 12), package.json, `.github/workflows/ci.yml`, `playwright.config.ts`, `.gitignore`, Next's Node engine (`>=20.9.0`, met by CI's Node 20). No TODO/FIXME/XXX markers in `app/`, `lib/`, `components/`, `tests/` or `e2e/`.
+- Backlog was empty; added one small config task.
+- Added "Make CI e2e failures diagnosable": the next event is the first-ever CI e2e run (Chrome via `channel: "chrome"` on the ubuntu runner, never verified). The last autopilot run's plan is "if e2e fails, fix the job", but the job has no retries, traces, screenshots or artifact upload, so a failure (or a one-off flake) would come with only a log. A few lines of config make that first run, and every later one, debuggable.
+- Deliberately not added: pushing/opening a PR (user decision); pinning `channel: "chrome"` vs installing Playwright's Chromium (wait for the real CI result instead of guessing); the same deferrals as planner runs 9-16 ("continue past 4000 steps", cancelling runs on edit, Open Graph metadata, more builtins, compound literals/`goto`, CSP headers, MemoryView screen-reader work, `.archify/` cleanup, splitting `lib/c/interp.ts`). No application code has changed, so no other new gap exists.
+
+### 2026-10-04 — autopilot run (e2e diagnosability)
+- Picked up: "Make CI e2e failures diagnosable (trace, retry, report artifact)" (the only pending task).
+- Did: `playwright.config.ts` gets CI-only retry (1), github+html reporters, trace/screenshot on failure; `ci.yml` e2e job gets `timeout-minutes: 15` and an `upload-artifact@v4` step (report + test-results, 7 days, `if: !cancelled()`).
+- Tests: lint, typecheck clean; `npm run e2e` 3/3 pass locally.
+- Branch: committed locally on `autopilot/cleanup-and-ai-validate`; 2 commits unpushed (needs user confirmation).
+- Next: push, then check the first CI run (esp. e2e); fix from the uploaded report if it fails.
