@@ -297,3 +297,4 @@
 ### 2026-10-04 — CI fix (manual, after first CI run)
 - First CI run (7831ae0) failed in both jobs at `npm ci`. Reproduced locally: lockfile from npm 11 is rejected by Node 20's npm 10 ("Missing: @emnapi/core@1.11.3 from lock file").
 - Fix: `ci.yml` uses Node 24 (matches local; Next needs >=20.9). Lint/typecheck/test/build/e2e have still never run on GitHub; verify after pushing.
+- Node 24 alone did not fix it (run for 3aaab79 still failed at `npm ci`). Regenerated `package-lock.json` with npm 10 (`install --package-lock-only`) so it adds the cross-platform optional deps (emnapi, lightningcss linux/win, etc.); `npm ci --dry-run` now passes under both npm 10 and npm 11, and lint/typecheck/202 unit tests pass locally.
