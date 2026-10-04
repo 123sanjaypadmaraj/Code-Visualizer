@@ -251,3 +251,8 @@
 - Surveyed: `git log` (HEAD ccb5ed7, no commits since; ccb5ed7 only committed planner run 13's log entry, tree clean), status file tail.
 - Added nothing. No code has changed since planner run 12, so there is no new gap to find. Fourth run in a row with nothing to add.
 - Deliberately not added: the same deferrals as planner runs 9-13. Recommendation stands: review and push/merge `autopilot/cleanup-and-ai-validate` (which also lets the CI e2e job be verified) before running the planner again.
+
+### 2026-10-04 — planner run 15 (improvement proposals)
+- Surveyed: full status file, `git log --oneline -30` (HEAD c05b12d; c05b12d and ccb5ed7 only commit planner-run log entries, so the last code/docs change is still fc14e5f), package.json, tracked file tree (unchanged since planner run 12).
+- Added nothing. No code has changed since planner run 12, so there is no new gap to find. This is the fifth run in a row with nothing to add; the task list has no pending work, and every item is done.
+- Deliberately not added: the same deferrals as planner runs 9-14 ("continue past 4000 steps", cancelling runs on edit, Open Graph metadata, more builtins, compound literals/`goto`, CSP headers, MemoryView screen-reader work, `.archify/` cleanup, splitting `lib/c/interp.ts`). Verifying the CI e2e job still needs a real PR to `main`. Recommendation stands: the user should review and push/merge `autopilot/cleanup-and-ai-validate` (13 local commits ahead of `main`, none pushed) before running the planner again. Repeated planner runs on an unchanged tree only add log entries.
