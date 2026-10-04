@@ -1,9 +1,13 @@
 name: CI
 on:
   push:
-    branches: [main]
+    branches: [main, "autopilot/**"]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   check:
     runs-on: ubuntu-latest

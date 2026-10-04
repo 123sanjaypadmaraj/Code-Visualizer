@@ -71,6 +71,9 @@
 - [x] **Document the test/check scripts and all AI provider keys in the README** — status: done
   `README.md` has no section on checks even though the project has five (`lint` with zero warnings, `typecheck`, `test`, `build`, `e2e`), and its quirks are only recorded in this status file: `tests/gcc-diff.test.ts` silently skips without `gcc`, and `npm run e2e` needs a local Google Chrome (`channel: "chrome"` in `playwright.config.ts`) and builds/serves on port 3123. Add a "Development & tests" section after "Run locally" that lists each script with a one-line purpose, matching what CI (`.github/workflows/ci.yml`) runs, and notes these two requirements. Also fix "Deploy to Vercel" step 3, which names only `GROQ_API_KEY`/`GEMINI_API_KEY` although the app also uses Cerebras and OpenRouter: list every key variable `.env.example` documents and say any one is enough. Docs-only change: verify each script name and port against `package.json`/`playwright.config.ts`, and do not change code.
 
+- [x] **Run CI on pushes to `autopilot/**` branches and allow manual runs** — status: done
+  `.github/workflows/ci.yml` triggers only on `push`/`pull_request` to `main`, so the now-pushed `autopilot/cleanup-and-ai-validate` branch (and every future autopilot branch) gets no CI run at all, and the `e2e` job (which relies on Chrome being preinstalled on the ubuntu runner via `channel: "chrome"`) has never run anywhere. Change the `push` trigger to `branches: [main, "autopilot/**"]` and add `workflow_dispatch:`, leaving `pull_request` and both jobs unchanged; add a `concurrency` group (`ci-${{ github.ref }}`, `cancel-in-progress: true`) so a push to the branch and its PR run don't pile up. Config-only change: done when the YAML is valid (check indentation by eye against GitHub's documented `on:` syntax) and lint/typecheck/test still pass; do not push, since whether and when to push is the user's call.
+
 ## Run log
 
 ### 2026-10-01 — planner run (improvement proposals)
@@ -256,3 +259,16 @@
 - Surveyed: full status file, `git log --oneline -30` (HEAD c05b12d; c05b12d and ccb5ed7 only commit planner-run log entries, so the last code/docs change is still fc14e5f), package.json, tracked file tree (unchanged since planner run 12).
 - Added nothing. No code has changed since planner run 12, so there is no new gap to find. This is the fifth run in a row with nothing to add; the task list has no pending work, and every item is done.
 - Deliberately not added: the same deferrals as planner runs 9-14 ("continue past 4000 steps", cancelling runs on edit, Open Graph metadata, more builtins, compound literals/`goto`, CSP headers, MemoryView screen-reader work, `.archify/` cleanup, splitting `lib/c/interp.ts`). Verifying the CI e2e job still needs a real PR to `main`. Recommendation stands: the user should review and push/merge `autopilot/cleanup-and-ai-validate` (13 local commits ahead of `main`, none pushed) before running the planner again. Repeated planner runs on an unchanged tree only add log entries.
+
+### 2026-10-04 — planner run 16 (improvement proposals)
+- Surveyed: full status file, `git log --oneline -30` (HEAD d0468dc "update on UI", which despite its title only changes this file; the last code/docs change is still fc14e5f), `git branch -vv` (branch now tracks `origin/autopilot/cleanup-and-ai-validate` and is in sync; `main` is at 97aad3d), package.json, tracked file tree (unchanged since planner run 12), `.github/workflows/ci.yml` triggers. No TODO/FIXME/XXX markers in `app/`, `lib/`, `components/`, `tests/` or `e2e/`.
+- Backlog was empty; added one small config task.
+- Added "Run CI on pushes to `autopilot/**` branches + `workflow_dispatch`": new angle on the item planner run 7 called low value. The branch is now pushed, but CI only runs on `main` pushes and PRs, so the pushed work, including the never-run `e2e` job, still has no CI signal unless the user opens a PR. Earlier runs repeatedly named verifying the CI e2e job as the main open gap; this lets a push verify it.
+- Deliberately not added: opening a PR or merging to `main` (user decision, not a code task); the same deferrals as planner runs 9-15 ("continue past 4000 steps", cancelling runs on edit, Open Graph metadata, more builtins, compound literals/`goto`, CSP headers, MemoryView screen-reader work, `.archify/` cleanup, splitting `lib/c/interp.ts`). No application code has changed since planner run 12, so no other new gap exists.
+
+### 2026-10-04 — autopilot run (CI triggers)
+- Picked up: "Run CI on pushes to `autopilot/**` branches and allow manual runs" (the only pending task).
+- Did: `.github/workflows/ci.yml` now triggers on pushes to `main` and `autopilot/**`, adds `workflow_dispatch`, and a per-ref `concurrency` group with cancel-in-progress. Jobs unchanged.
+- Tests: lint, typecheck clean; 202/202 unit tests pass. Build/e2e not run locally (config-only change).
+- Branch: committed locally on `autopilot/cleanup-and-ai-validate`; not pushed (needs user confirmation). Pushing will trigger the first CI run, including the never-run e2e job.
+- Next: after the push, check the CI result; if e2e fails, fix the job.
