@@ -288,3 +288,12 @@
 - Tests: lint, typecheck clean; `npm run e2e` 3/3 pass locally.
 - Branch: committed locally on `autopilot/cleanup-and-ai-validate`; 2 commits unpushed (needs user confirmation).
 - Next: push, then check the first CI run (esp. e2e); fix from the uploaded report if it fails.
+
+### 2026-10-04 — planner run 18 (improvement proposals)
+- Surveyed: full status file, `git log --oneline -30` (HEAD 7831ae0, tree clean), `git branch -vv` (2 commits ahead of `origin/autopilot/cleanup-and-ai-validate`, not pushed: ab8352b CI triggers, 7831ae0 e2e diagnosability), `git diff --stat fc14e5f HEAD` (only `ci.yml`, `playwright.config.ts` and this file changed since the last code/docs commit), package.json, tracked file tree. No TODO/FIXME/XXX markers in `app/`, `lib/`, `components/`, `tests/` or `e2e/`.
+- Added nothing. Both changes since planner run 17 are the CI config tasks that run and planner run 16 proposed, and both are done. No application code has changed since planner run 12, so no new gap exists. The only open item is the first real CI run (including the never-run e2e job), which needs the two local commits to be pushed. Pushing is the user's decision, not a task.
+- Deliberately not added: guessing at e2e fixes for CI (for example switching `channel: "chrome"` to an installed Chromium) before a real run shows a failure; the same deferrals as planner runs 9-17 ("continue past 4000 steps", cancelling runs on edit, Open Graph metadata, more builtins, compound literals/`goto`, CSP headers, MemoryView screen-reader work, `.archify/` cleanup, splitting `lib/c/interp.ts`). Recommendation: push `autopilot/cleanup-and-ai-validate`, check the CI result, and run the planner again only if CI fails or new code lands.
+
+### 2026-10-04 — CI fix (manual, after first CI run)
+- First CI run (7831ae0) failed in both jobs at `npm ci`. Reproduced locally: lockfile from npm 11 is rejected by Node 20's npm 10 ("Missing: @emnapi/core@1.11.3 from lock file").
+- Fix: `ci.yml` uses Node 24 (matches local; Next needs >=20.9). Lint/typecheck/test/build/e2e have still never run on GitHub; verify after pushing.
